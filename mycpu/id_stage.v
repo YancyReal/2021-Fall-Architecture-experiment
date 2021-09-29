@@ -108,7 +108,7 @@ wire [31:0] rf_rdata2;
 wire        rj_eq_rd;
 
 assign br_bus       = {br_taken,br_target};
-
+assign load_op = res_from_mem;
 assign ds_to_es_bus = {alu_op      ,  //149:138
                        load_op     ,  //137:137
                        src1_is_pc  ,  //136:136
@@ -125,7 +125,18 @@ assign ds_to_es_bus = {alu_op      ,  //149:138
 assign ds_ready_go    = 1'b1;
 assign ds_allowin     = !ds_valid || ds_ready_go && es_allowin;
 assign ds_to_es_valid = ds_valid && ds_ready_go;
-always @(posedge clk) begin 
+
+always @(posedge clk) begin
+    if (reset) begin     
+        ds_valid <= 1'b0;
+    end
+    else if(br_taken)begin     
+        ds_valid <= 1'b0;
+    end
+    else if (ds_allowin) begin 
+        ds_valid <= fs_to_ds_valid;
+    end
+
     if (fs_to_ds_valid && ds_allowin) begin
         fs_to_ds_bus_r <= fs_to_ds_bus;
     end
