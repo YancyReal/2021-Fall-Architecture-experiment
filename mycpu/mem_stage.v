@@ -13,7 +13,8 @@ module mem_stage(
     output                         ms_to_ws_valid,
     output [`MS_TO_WS_BUS_WD -1:0] ms_to_ws_bus  ,
     //from data-sram
-    input  [31                 :0] data_sram_rdata
+    input  [31                 :0] data_sram_rdata,
+    output [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus
 );
 
 reg         ms_valid;
@@ -32,6 +33,7 @@ assign {ms_res_from_mem,  //70:70
         ms_pc             //31:0
        } = es_to_ms_bus_r;
 
+
 wire [31:0] mem_result;
 wire [31:0] ms_final_result;
 
@@ -41,6 +43,13 @@ assign ms_to_ws_bus = {ms_gr_we       ,  //69:69
                        ms_pc             //31:0
                       };
 
+wire        ms_ds_we;
+wire [ 4:0] ms_ds_dest;
+assign ms_to_ds_bus = {ms_ds_we,
+                       ms_ds_dest,
+                       ms_final_result
+                      };
+                      
 assign ms_ready_go    = 1'b1;
 assign ms_allowin     = !ms_valid || ms_ready_go && ws_allowin;
 assign ms_to_ws_valid = ms_valid && ms_ready_go;
@@ -56,6 +65,9 @@ always @(posedge clk) begin
         es_to_ms_bus_r  <= es_to_ms_bus;
     end
 end
+
+assign ms_ds_we        = ms_valid && ms_gr_we;
+assign ms_ds_dest      = ms_dest;
 
 assign mem_result = data_sram_rdata;
 

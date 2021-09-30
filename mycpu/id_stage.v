@@ -15,10 +15,15 @@ module id_stage(
     //to fs
     output [`BR_BUS_WD       -1:0] br_bus        ,
     //to rf: for write back
-    input  [`WS_TO_RF_BUS_WD -1:0] ws_to_rf_bus  
+    input  [`WS_TO_RF_BUS_WD -1:0] ws_to_rf_bus  ,
+    //feeddback from es  
+    input  [`ES_TO_DS_BUS_WD -1:0] es_to_ds_bus  ,
+    //feeddback from ms
+    input  [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus   
 );
 
 reg         ds_valid   ;
+wire        ds_block   ;
 wire        ds_ready_go;
 
 reg  [`FS_TO_DS_BUS_WD -1:0] fs_to_ds_bus_r;
@@ -27,6 +32,29 @@ wire [31:0] ds_inst;
 wire [31:0] ds_pc  ;
 assign {ds_inst,
         ds_pc  } = fs_to_ds_bus_r;
+
+wire        es_we    ;
+wire [4:0]  es_dest  ;
+wire [31:0] es_result;
+wire        es_load;
+assign {es_we        ,   //38:38
+        es_dest      ,   //37:33
+        es_result    ,   //32:1
+        es_load          //0 :0
+       } = es_to_ds_bus;
+
+wire        ms_we    ;
+wire [4:0]  ms_dest  ;
+wire [31:0] ms_result;
+assign {ms_we       ,  //37:37
+        ms_dest     ,  //36:32
+        ms_result      //31:0
+       } = ms_to_ds_bus;
+
+// add feedback signals in ws_to_rf_bus
+wire        ws_we;
+wire [ 4:0] ws_dest;
+wire [31:0] ws_result;
 
 wire        rf_we   ;
 wire [ 4:0] rf_waddr;
@@ -122,7 +150,9 @@ assign ds_to_es_bus = {alu_op      ,  //149:138
                        ds_pc          //31 :0
                       };
 
-assign ds_ready_go    = 1'b1;
+assign ds_block   = (es_we && (es_dest == rf_raddr1 || es_dest == rf_raddr2));
+
+assign ds_ready_go    = !(es_load && ds_block);
 assign ds_allowin     = !ds_valid || ds_ready_go && es_allowin;
 assign ds_to_es_valid = ds_valid && ds_ready_go;
 
@@ -130,7 +160,7 @@ always @(posedge clk) begin
     if (reset) begin     
         ds_valid <= 1'b0;
     end
-    else if(br_taken)begin     
+    else if (br_taken && ds_ready_go)begin     
         ds_valid <= 1'b0;
     end
     else if (ds_allowin) begin 
@@ -141,6 +171,7 @@ always @(posedge clk) begin
         fs_to_ds_bus_r <= fs_to_ds_bus;
     end
 end
+
 
 assign op_31_26  = ds_inst[31:26];
 assign op_25_22  = ds_inst[25:22];
@@ -248,11 +279,21 @@ regfile u_regfile(
     .wdata  (rf_wdata )
     );
 
+assign ws_we    =  rf_we;
+assign ws_dest  =  rf_waddr;
+assign ws_result =  rf_wdata;
 
-assign rj_value  = rf_rdata1; 
-assign rkd_value = rf_rdata2;
+assign rj_value = (es_we && rf_raddr1 == es_dest) ? es_result :
+                  (ms_we && rf_raddr1 == ms_dest) ? ms_result :
+                  (ws_we && rf_raddr1 == ws_dest) ? ws_result :
+                                                    rf_rdata1 ;
+assign rkd_value = (es_we && rf_raddr2 == es_dest) ? es_result :
+                   (ms_we && rf_raddr2 == ms_dest) ? ms_result :
+                   (ws_we && rf_raddr2 == ws_dest) ? ws_result :
+                                                     rf_rdata2 ;
 
 assign rj_eq_rd = (rj_value == rkd_value);
+
 assign br_taken = (   inst_beq  &&  rj_eq_rd
                    || inst_bne  && !rj_eq_rd
                    || inst_jirl
