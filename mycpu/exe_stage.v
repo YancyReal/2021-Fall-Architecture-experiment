@@ -77,28 +77,33 @@ assign es_to_ms_bus = {es_res_from_mem,  //70:70
                        es_pc             //31:0
                       };
 
-wire div_block;
+//div var declaration part
 wire es_inst_div;
+
+wire div_block;
 wire div_finished_signed;
 wire div_finished_unsigned;
-reg div_state_signed;
-reg div_state_unsigned;
+reg  div_state_signed;
+reg  div_state_unsigned;
 wire div_hand_succeeded_signed;
 wire div_hand_succeeded_unsigned;
-reg divisor_tvalid_signed;
-reg dividend_tvalid_signed;
-reg divisor_tvalid_unsigned;
-reg dividend_tvalid_unsigned;
+//input of div device
+reg  divisor_tvalid_signed;
+reg  dividend_tvalid_signed;
+reg  divisor_tvalid_unsigned;
+reg  dividend_tvalid_unsigned;
 wire divisor_tready_signed;
 wire divisor_tready_unsigned;
 wire dividend_tready_signed;
 wire dividend_tready_unsigned;
-wire [63:0] div_signed_res;
+//output of div device
 wire div_tvalid_signed;
-wire [63:0] div_unsigned_res;
 wire div_tvalid_unsigned;
-wire [31:0]div_result;
-wire [31:0]mod_result;
+wire [63: 0] div_signed_res;
+wire [63: 0] div_unsigned_res;
+
+wire [31: 0]div_result;
+wire [31: 0]mod_result;
 
 assign es_ready_go    = !div_block;
 assign es_allowin     = !es_valid || es_ready_go && ms_allowin;
@@ -144,6 +149,7 @@ always @(posedge clk) begin
         divisor_tvalid_signed  <= 1'b1;
         dividend_tvalid_signed <= 1'b1;
     end
+    
     if(div_hand_succeeded_signed) begin
         divisor_tvalid_signed  <= 1'b0;
         dividend_tvalid_signed <= 1'b0;
@@ -171,6 +177,7 @@ always @(posedge clk) begin
         divisor_tvalid_unsigned  <= 1'b1;
         dividend_tvalid_unsigned <= 1'b1;
     end
+
     if(div_hand_succeeded_unsigned) begin
         divisor_tvalid_unsigned  <= 1'b0;
         dividend_tvalid_unsigned <= 1'b0;
