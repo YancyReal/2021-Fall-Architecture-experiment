@@ -77,34 +77,28 @@ assign es_to_ms_bus = {es_res_from_mem,  //70:70
                        es_pc             //31:0
                       };
 
-//div var declaration part
-wire es_inst_div;
-
 wire div_block;
+wire es_inst_div;
 wire div_finished_signed;
 wire div_finished_unsigned;
-reg  div_state_signed;
-reg  div_state_unsigned;
-wire div_tvalid_signed;
-wire div_tvalid_unsigned;
-
+reg div_state_signed;
+reg div_state_unsigned;
 wire div_hand_succeeded_signed;
 wire div_hand_succeeded_unsigned;
-
-reg  divisor_tvalid_signed;
-reg  dividend_tvalid_signed;
-reg  divisor_tvalid_unsigned;
-reg  dividend_tvalid_unsigned;
-
+reg divisor_tvalid_signed;
+reg dividend_tvalid_signed;
+reg divisor_tvalid_unsigned;
+reg dividend_tvalid_unsigned;
 wire divisor_tready_signed;
 wire divisor_tready_unsigned;
 wire dividend_tready_signed;
 wire dividend_tready_unsigned;
-
-wire [63: 0] div_signed_res;
-wire [63: 0] div_unsigned_res;
-wire [31: 0] div_result;
-wire [31: 0] mod_result;
+wire [63:0] div_signed_res;
+wire div_tvalid_signed;
+wire [63:0] div_unsigned_res;
+wire div_tvalid_unsigned;
+wire [31:0]div_result;
+wire [31:0]mod_result;
 
 assign es_ready_go    = !div_block;
 assign es_allowin     = !es_valid || es_ready_go && ms_allowin;
@@ -143,38 +137,54 @@ assign es_div_unsign = es_div_op[1] | es_div_op[3];
 
 always @(posedge clk) begin
     if(reset) begin
-        div_state_signed       <= 1'b0;
         divisor_tvalid_signed  <= 1'b0;
         dividend_tvalid_signed <= 1'b0;
     end
-    if(div_finished_signed)
-        div_state_signed       <= 1'b0;
-    if(es_div_sign & es_valid & !div_state_signed)begin
+    else if(es_div_sign & es_valid & !div_state_signed)begin
         divisor_tvalid_signed  <= 1'b1;
         dividend_tvalid_signed <= 1'b1;
     end
     if(div_hand_succeeded_signed) begin
         divisor_tvalid_signed  <= 1'b0;
         dividend_tvalid_signed <= 1'b0;
+    end
+end
+
+always @(posedge clk) begin
+    if(reset) begin
+        div_state_signed       <= 1'b0;
+    end
+    else if(div_finished_signed) begin
+        div_state_signed       <= 1'b0;
+    end
+    else if(div_hand_succeeded_signed) begin
         div_state_signed       <= 1'b1;
     end
 end
 
 always @(posedge clk) begin
     if(reset) begin
-        div_state_unsigned       <= 1'b0;
         divisor_tvalid_unsigned  <= 1'b0;
         dividend_tvalid_unsigned <= 1'b0;
     end
-    if(div_finished_unsigned)
-        div_state_unsigned       <= 1'b0;
-    if(es_div_unsign & es_valid & !div_state_unsigned)begin
+    else if(es_div_unsign & es_valid & !div_state_unsigned) begin
         divisor_tvalid_unsigned  <= 1'b1;
         dividend_tvalid_unsigned <= 1'b1;
     end
     if(div_hand_succeeded_unsigned) begin
         divisor_tvalid_unsigned  <= 1'b0;
         dividend_tvalid_unsigned <= 1'b0;
+    end
+end
+
+always @(posedge clk) begin
+    if(reset) begin
+        div_state_unsigned       <= 1'b0;
+    end
+    else if(div_finished_unsigned) begin
+        div_state_unsigned       <= 1'b0;
+    end 
+    else if(div_hand_succeeded_unsigned) begin
         div_state_unsigned       <= 1'b1;
     end
 end
@@ -220,8 +230,6 @@ div_unsigned div_unsigned(
 assign es_result = (es_div_op[0] | es_div_op[1]) ? div_result :
                    (es_div_op[2] | es_div_op[3]) ? mod_result :
                                                    es_alu_result;
-
-
 
 assign es_ds_we       = es_valid && es_gr_we;
 assign es_ds_dest     = es_dest;
