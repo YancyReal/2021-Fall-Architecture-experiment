@@ -1,5 +1,5 @@
 module alu(
-  input  [11:0] alu_op,
+  input  [14:0] alu_op,
   input  [31:0] alu_src1,
   input  [31:0] alu_src2,
   output [31:0] alu_result
@@ -17,20 +17,28 @@ wire op_sll;   //logic left shift
 wire op_srl;   //logic right shift
 wire op_sra;   //arithmetic right shift
 wire op_lui;   //Load Upper Immediate
+wire op_mul;
+wire op_mulh;
+wire op_mulhu;
+
 
 // control code decomposition
-assign op_add  = alu_op[ 0];
-assign op_sub  = alu_op[ 1];
-assign op_slt  = alu_op[ 2];
-assign op_sltu = alu_op[ 3];
-assign op_and  = alu_op[ 4];
-assign op_nor  = alu_op[ 5];
-assign op_or   = alu_op[ 6];
-assign op_xor  = alu_op[ 7];
-assign op_sll  = alu_op[ 8];
-assign op_srl  = alu_op[ 9];
-assign op_sra  = alu_op[10];
-assign op_lui  = alu_op[11];
+assign op_add   = alu_op[ 0];
+assign op_sub   = alu_op[ 1];
+assign op_slt   = alu_op[ 2];
+assign op_sltu  = alu_op[ 3];
+assign op_and   = alu_op[ 4];
+assign op_nor   = alu_op[ 5];
+assign op_or    = alu_op[ 6];
+assign op_xor   = alu_op[ 7];
+assign op_sll   = alu_op[ 8];
+assign op_srl   = alu_op[ 9];
+assign op_sra   = alu_op[10];
+assign op_lui   = alu_op[11];
+assign op_mul   = alu_op[12];
+assign op_mulh  = alu_op[13];
+assign op_mulhu = alu_op[14];
+
 
 wire [31:0] add_sub_result;
 wire [31:0] slt_result;
@@ -43,6 +51,10 @@ wire [31:0] lui_result;
 wire [31:0] sll_result;
 wire [63:0] sr64_result;
 wire [31:0] sr_result;
+wire [63:0] unsigned_prod;
+wire [63:0] signed_prod;
+wire [31:0] mul_result;
+
 
 
 // 32-bit adder
@@ -74,7 +86,7 @@ assign and_result = alu_src1 & alu_src2;
 assign or_result  = alu_src1 | alu_src2;
 assign nor_result = ~or_result;
 assign xor_result = alu_src1 ^ alu_src2;
-assign lui_result = {alu_src2[14:0], alu_src2[19:15], 12'b0};
+assign lui_result = alu_src2;
 
 // SLL result
 assign sll_result = alu_src1 << alu_src2[4:0];   //rj << i5
@@ -83,6 +95,15 @@ assign sll_result = alu_src1 << alu_src2[4:0];   //rj << i5
 assign sr64_result = {{32{op_sra & alu_src1[31]}}, alu_src1[31:0]} >> alu_src2[4:0]; //rj >> i5
 
 assign sr_result   = sr64_result[31:0];
+
+// MUL, MULh, MULU
+assign unsigned_prod = alu_src1 * alu_src2;
+assign signed_prod   = $signed(alu_src1) * $signed(alu_src2);
+
+assign mul_result = (op_mul)   ? unsigned_prod[31: 0]  :
+                    (op_mulhu) ? unsigned_prod[63:32] : signed_prod[63:32];
+
+
 
 // final result mux
 assign alu_result = ({32{op_add|op_sub}} & add_sub_result)
@@ -94,6 +115,7 @@ assign alu_result = ({32{op_add|op_sub}} & add_sub_result)
                   | ({32{op_xor       }} & xor_result)
                   | ({32{op_lui       }} & lui_result)
                   | ({32{op_sll       }} & sll_result)
-                  | ({32{op_srl|op_sra}} & sr_result);
+                  | ({32{op_srl|op_sra}} & sr_result)
+                  | ({32{op_mul|op_mulh|op_mulhu}} & mul_result);
 
 endmodule
