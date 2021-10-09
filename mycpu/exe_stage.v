@@ -145,14 +145,13 @@ always @(posedge clk) begin
         divisor_tvalid_signed  <= 1'b0;
         dividend_tvalid_signed <= 1'b0;
     end
+    else if(div_hand_succeeded_signed) begin
+        divisor_tvalid_signed  <= 1'b0;
+        dividend_tvalid_signed <= 1'b0;
+    end
     else if(es_div_sign & es_valid & !div_state_signed)begin
         divisor_tvalid_signed  <= 1'b1;
         dividend_tvalid_signed <= 1'b1;
-    end
-    
-    if(div_hand_succeeded_signed) begin
-        divisor_tvalid_signed  <= 1'b0;
-        dividend_tvalid_signed <= 1'b0;
     end
 end
 
@@ -173,14 +172,13 @@ always @(posedge clk) begin
         divisor_tvalid_unsigned  <= 1'b0;
         dividend_tvalid_unsigned <= 1'b0;
     end
+    else if(div_hand_succeeded_unsigned) begin
+        divisor_tvalid_unsigned  <= 1'b0;
+        dividend_tvalid_unsigned <= 1'b0;
+    end
     else if(es_div_unsign & es_valid & !div_state_unsigned) begin
         divisor_tvalid_unsigned  <= 1'b1;
         dividend_tvalid_unsigned <= 1'b1;
-    end
-
-    if(div_hand_succeeded_unsigned) begin
-        divisor_tvalid_unsigned  <= 1'b0;
-        dividend_tvalid_unsigned <= 1'b0;
     end
 end
 
