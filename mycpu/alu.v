@@ -17,9 +17,9 @@ wire op_sll;   //logic left shift
 wire op_srl;   //logic right shift
 wire op_sra;   //arithmetic right shift
 wire op_lui;   //Load Upper Immediate
-wire op_mul;
-wire op_mulh;
-wire op_mulhu;
+wire op_mul;   //mul operation
+wire op_mulh;  //mul operation and high bit is signed
+wire op_mulhu; //mul operation and high bit is unsigned
 
 
 // control code decomposition
