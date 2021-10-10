@@ -20,19 +20,36 @@ module mem_stage(
 reg         ms_valid;
 wire        ms_ready_go;
 
+wire ms_ld_w ;
+wire ms_ld_b ;
+wire ms_ld_h ;
+wire ms_ld_bu;
+wire ms_ld_hu;
+wire [4:0] ms_ld_inst;
+wire [3:0] Vaddr;
+wire [7:0] Byte0;
+wire [7:0] Byte1; 
+
 reg [`ES_TO_MS_BUS_WD -1:0] es_to_ms_bus_r;
 wire        ms_res_from_mem;
 wire        ms_gr_we;
 wire [ 4:0] ms_dest;
 wire [31:0] ms_alu_result;
 wire [31:0] ms_pc;
-assign {ms_res_from_mem,  //70:70
+
+assign {ms_ld_inst     ,  //75:71
+        ms_res_from_mem,  //70:70
         ms_gr_we       ,  //69:69
         ms_dest        ,  //68:64
         ms_alu_result  ,  //63:32
         ms_pc             //31:0
        } = es_to_ms_bus_r;
 
+assign ms_ld_w  = ms_ld_inst[0];
+assign ms_ld_b  = ms_ld_inst[1];
+assign ms_ld_h  = ms_ld_inst[2];
+assign ms_ld_bu = ms_ld_inst[3];
+assign ms_ld_hu = ms_ld_inst[4];
 
 wire [31:0] mem_result;
 wire [31:0] ms_final_result;
@@ -66,10 +83,31 @@ always @(posedge clk) begin
     end
 end
 
-assign ms_ds_we        = ms_valid && ms_gr_we;
-assign ms_ds_dest      = ms_dest;
+assign ms_ds_we   = ms_valid && ms_gr_we;
+assign ms_ds_dest = ms_dest;
 
-assign mem_result = data_sram_rdata;
+assign Vaddr[0] = ms_alu_result[1:0] == 2'b00 ;
+assign Vaddr[1] = ms_alu_result[1:0] == 2'b01 ;
+assign Vaddr[2] = ms_alu_result[1:0] == 2'b10 ;
+assign Vaddr[3] = ms_alu_result[1:0] == 2'b11 ;
+
+
+assign Byte0 = Vaddr[0] ? data_sram_rdata[7 : 0] :
+               Vaddr[1] ? data_sram_rdata[15: 8] :
+               Vaddr[2] ? data_sram_rdata[23:16] :
+               Vaddr[3] ? data_sram_rdata[31:24] :
+                                           8'b0  ;
+assign Byte1 = Vaddr[0] ? data_sram_rdata[15: 8] :
+               Vaddr[1] ? data_sram_rdata[23:16] :
+               Vaddr[2] ? data_sram_rdata[31:24] :
+                                           8'b0  ;
+
+assign mem_result = ms_ld_w  ? data_sram_rdata                      :
+                    ms_ld_b  ? {{24{Byte0[7]}},  Byte0            } :
+                    ms_ld_h  ? {{16{Byte1[7]}},  Byte1   ,   Byte0} :
+                    ms_ld_bu ? {24'b0         ,  Byte0            } :
+                    ms_ld_hu ? {16'b0         ,  Byte1   ,   Byte0} :
+                                                             32'b0  ;
 
 assign ms_final_result = ms_res_from_mem ? mem_result
                                          : ms_alu_result;

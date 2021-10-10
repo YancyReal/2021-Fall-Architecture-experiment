@@ -40,10 +40,20 @@ wire [31:0] es_rkd_value  ;
 wire [31:0] es_pc         ;
 
 wire        es_res_from_mem;
-wire        es_load_op;
-assign {es_div_op      ,  //156:153
+wire        es_ld_op;
+wire [4:0]  es_ld_inst;
+
+wire es_st_b;
+wire es_st_h;
+wire es_st_w;
+wire [2: 0] es_st_inst;                                                            
+wire [3: 0] es_store_strb;
+wire [31:0] es_store_data;
+assign {es_st_inst     ,  //164:162
+        es_ld_inst     ,  //161:157
+        es_div_op      ,  //156:153
         es_alu_op      ,  //152:138
-        es_load_op     ,  //137:137
+        es_ld_op       ,  //137:137
         es_src1_is_pc  ,  //136:136
         es_src2_is_imm ,  //135:135
         es_gr_we       ,  //134:134
@@ -58,19 +68,20 @@ assign {es_div_op      ,  //156:153
 wire [31:0] es_alu_src1   ;
 wire [31:0] es_alu_src2   ;
 wire [31:0] es_alu_result ;
-wire [31:0] es_result ;
+wire [31:0] es_result     ;
 
 wire         es_ds_we;
 wire [4: 0]  es_ds_dest;
 
 assign es_to_ds_bus = {es_ds_we               ,     //38:38         
                        es_ds_dest             ,     //37:33
-                       es_result          ,         //32:1
-                       es_load_op && es_valid       //0 :0
+                       es_result              ,     //32:1
+                       es_ld_op && es_valid         //0 :0
                       };
 
-assign es_res_from_mem = es_load_op;
-assign es_to_ms_bus = {es_res_from_mem,  //70:70
+assign es_res_from_mem = es_ld_op;
+assign es_to_ms_bus = {es_ld_inst     ,  //75:71
+                       es_res_from_mem,  //70:70
                        es_gr_we       ,  //69:69
                        es_dest        ,  //68:64
                        es_result      ,  //63:32
@@ -214,8 +225,8 @@ div_signed div_signed(
   .s_axis_dividend_tready (dividend_tready_signed),
   .s_axis_dividend_tvalid (dividend_tvalid_signed),
 
-  .m_axis_dout_tdata     (div_signed_res),
-  .m_axis_dout_tvalid    (div_tvalid_signed)
+  .m_axis_dout_tdata      (div_signed_res),
+  .m_axis_dout_tvalid     (div_tvalid_signed)
 );
 
 div_unsigned div_unsigned(
@@ -228,8 +239,8 @@ div_unsigned div_unsigned(
   .s_axis_dividend_tready (dividend_tready_unsigned),
   .s_axis_dividend_tvalid (dividend_tvalid_unsigned),
 
-  .m_axis_dout_tdata     (div_unsigned_res),
-  .m_axis_dout_tvalid    (div_tvalid_unsigned)
+  .m_axis_dout_tdata      (div_unsigned_res),
+  .m_axis_dout_tvalid     (div_tvalid_unsigned)
 );
 
 assign es_result = (es_div_op[0] | es_div_op[1]) ? div_result :
@@ -239,9 +250,26 @@ assign es_result = (es_div_op[0] | es_div_op[1]) ? div_result :
 assign es_ds_we       = es_valid && es_gr_we;
 assign es_ds_dest     = es_dest;
 
+assign es_st_b = es_st_inst[0];
+assign es_st_h = es_st_inst[1];
+assign es_st_w = es_st_inst[2];
+assign es_store_strb = es_st_b ?(
+                                (es_alu_result[1:0] == 2'b00) ? 4'b0001 :
+                                (es_alu_result[1:0] == 2'b01) ? 4'b0010 :
+                                (es_alu_result[1:0] == 2'b10) ? 4'b0100 :
+                                                                4'b1000 )  :
+                       es_st_h ?(
+                                (es_alu_result[1:0] == 0) ?    4'b0011 :
+                                                               4'b1100 )  :
+                       es_st_w ?                               4'b1111 :
+                                                               4'b0000    ;
+assign es_store_data = es_st_b ? {4{es_rkd_value[7: 0]}}:
+                       es_st_h ? {2{es_rkd_value[15:0]}}:
+                                    es_rkd_value        ;    //es_st_w
+
 assign data_sram_en    = (es_res_from_mem || es_mem_we) && es_valid;
-assign data_sram_wen   = es_mem_we ? 4'hf : 4'h0;
-assign data_sram_addr  = es_alu_result;
-assign data_sram_wdata = es_rkd_value;
+assign data_sram_wen   = (es_mem_we && es_valid) ? es_store_strb : 4'h0;
+assign data_sram_addr  = {es_alu_result[31:2], 2'b0};
+assign data_sram_wdata = es_store_data;
 
 endmodule
