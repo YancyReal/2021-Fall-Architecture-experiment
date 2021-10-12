@@ -68,7 +68,7 @@ wire        br_taken;
 wire [31:0] br_target;
 
 wire [14:0] alu_op;
-wire [14:0] ds_alu_op;
+wire [1:0] ds_alu_op;
 wire [31:0] ds_alu_result;
 wire [3: 0] div_op;
 wire        load_op;
@@ -387,11 +387,9 @@ assign rkd_value = (es_we && rf_raddr2 == es_dest) ? es_result :
                    (ws_we && rf_raddr2 == ws_dest) ? ws_result :
                                                      rf_rdata2 ;
 
-assign ds_alu_op[2]   = inst_blt || inst_bge;  //slt
-assign ds_alu_op[3]   = inst_bltu|| inst_bgeu; //sltu
-assign ds_alu_op[1: 0] =  2'b0;
-assign ds_alu_op[14:4] = 11'b0;
-alu ds_alu(
+assign ds_alu_op[0]   = inst_blt || inst_bge;  //slt
+assign ds_alu_op[1]   = inst_bltu|| inst_bgeu; //sltu
+slt slt(
     .alu_op     (ds_alu_op    ),
     .alu_src1   (rj_value     ),
     .alu_src2   (rkd_value    ),
@@ -399,8 +397,8 @@ alu ds_alu(
     );
 
 assign rj_eq_rd    = (rj_value == rkd_value);
-assign rj_less_rd  = ds_alu_result[0] & ds_alu_op[2];  //slt
-assign rj_less_urd = ds_alu_result[0] & ds_alu_op[3];  //sltu
+assign rj_less_rd  = ds_alu_result[0] & ds_alu_op[0];  //slt
+assign rj_less_urd = ds_alu_result[0] & ds_alu_op[1];  //sltu
 
 assign br_taken = (   inst_beq  &&  rj_eq_rd
                    || inst_bne  && !rj_eq_rd
