@@ -39,6 +39,23 @@ wire [`BR_BUS_WD       -1:0] br_bus;
 //feedback bus
 wire [`ES_TO_DS_BUS_WD -1:0] es_to_ds_bus;
 wire [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus;
+wire csr_re;
+wire [13:0] csr_rnum;
+wire [31:0] csr_rvalue;
+wire [13:0] csr_wnum;
+wire csr_we;
+wire [31:0] csr_wvalue;
+wire [31:0] csr_wmask;
+wire [31:0] ex_entry;
+wire [31:0] ertn_entry;
+wire has_int;
+wire eret_flush;
+wire wb_ex;
+wire [5:0]  wb_ecode;
+wire [8:0]  wb_esubcode;
+wire [1:0] ws_to_fs_bus;
+wire ws_block;
+
 // IF stage
 if_stage if_stage(
     .clk            (clk            ),
@@ -55,7 +72,13 @@ if_stage if_stage(
     .inst_sram_wen  (inst_sram_wen  ),
     .inst_sram_addr (inst_sram_addr ),
     .inst_sram_wdata(inst_sram_wdata),
-    .inst_sram_rdata(inst_sram_rdata)
+    .inst_sram_rdata(inst_sram_rdata),
+    // from wb
+    .ws_to_fs_bus   (ws_to_fs_bus   ),
+    .ws_block       (ws_block       ),
+    // from csr
+    .ex_entry       (ex_entry       ),
+    .ertn_entry     (ertn_entry     )
 );
 // ID stage
 id_stage id_stage(
@@ -77,7 +100,14 @@ id_stage id_stage(
     //feedback from es
     .es_to_ds_bus   (es_to_ds_bus   ),
     //feedback from ms
-    .ms_to_ds_bus   (ms_to_ds_bus   )
+    .ms_to_ds_bus   (ms_to_ds_bus   ),
+    // from csr
+    .ds_csr_rdata   (csr_rvalue     ),
+    .ds_csr_num     (csr_rnum       ),
+    .ds_csr_re      (csr_re         ),
+    .es_ex_int      (es_ex_int      ),
+    .ms_ex_int      (ms_ex_int      ),
+    .ws_ex_int      (ws_block       )
 );
 // EXE stage
 exe_stage exe_stage(
@@ -98,7 +128,12 @@ exe_stage exe_stage(
     .data_sram_addr (data_sram_addr ),
     .data_sram_wdata(data_sram_wdata),
     //to ds
-    .es_to_ds_bus   (es_to_ds_bus)
+    .es_to_ds_bus   (es_to_ds_bus   ),
+    .es_ex_int      (es_ex_int      ),
+    .ms_ex_int      (ms_ex_int      ),
+    .ws_ex_int      (ws_block       ),
+    //to fs
+    .ws_block       (ws_block       )
 );
 // MEM stage
 mem_stage mem_stage(
@@ -116,7 +151,11 @@ mem_stage mem_stage(
     //from data-sram
     .data_sram_rdata(data_sram_rdata),
     //to ds
-    .ms_to_ds_bus   (ms_to_ds_bus)
+    .ms_to_ds_bus   (ms_to_ds_bus   ),
+    .ms_ex_int      (ms_ex_int      ),
+    // to fs
+    .ws_block       (ws_block       )
+
 );
 // WB stage
 wb_stage wb_stage(
@@ -127,13 +166,47 @@ wb_stage wb_stage(
     //from ms
     .ms_to_ws_valid (ms_to_ws_valid ),
     .ms_to_ws_bus   (ms_to_ws_bus   ),
+    // to fs
+    .ws_to_fs_bus   (ws_to_fs_bus   ),
+    .ws_block(ws_block),
     //to rf: for write back
     .ws_to_rf_bus   (ws_to_rf_bus   ),
+    .ws_ex          (wb_ex          ),
+    .ws_csr_we      (csr_we         ),
+    .ws_csr_num     (csr_wnum       ),
+    .ws_csr_wdata   (csr_wvalue     ),
+    .ws_csr_wmask   (csr_wmask      ),
+    .ws_csr_has_int (has_int        ),
+    .ws_csr_eret_flush(eret_flush   ),
+    .ws_csr_ecode   (wb_ecode       ),
+    .ws_csr_esubcode(wb_esubcode    ),
+
     //trace debug interface
     .debug_wb_pc      (debug_wb_pc      ),
     .debug_wb_rf_wen  (debug_wb_rf_wen  ),
     .debug_wb_rf_wnum (debug_wb_rf_wnum ),
     .debug_wb_rf_wdata(debug_wb_rf_wdata)
+    
+);
+
+csr u_csr(
+    .clk          (clk        ),
+    .rst          (reset      ),
+    .csr_re       (csr_re     ),
+    .csr_rnum     (csr_rnum   ),
+    .csr_wnum     (csr_wnum   ),
+    .csr_rvalue   (csr_rvalue ),
+    .csr_we       (csr_we     ),
+    .csr_wmask    (csr_wmask  ),
+    .csr_wvalue   (csr_wvalue ),
+    .ex_entry     (ex_entry   ),
+    .ertn_entry   (ertn_entry ),
+    .has_int      (has_int    ),
+    .eret_flush   (eret_flush ),
+    .wb_ex        (wb_ex      ),
+    .wb_ecode     (wb_ecode   ),
+    .wb_esubcode  (wb_esubcode),
+    .wb_pc        (debug_wb_pc)
 );
 
 endmodule
