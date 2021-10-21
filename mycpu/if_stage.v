@@ -55,7 +55,7 @@ assign {ws_ertn,   //2:2
 // pre-IF stage
 assign to_fs_valid  = ~reset;
 assign seq_pc       = fs_pc + 3'h4;
-assign nextpc       =   ws_ex ?  : ex_entry
+assign nextpc       =   ws_ex ?  ex_entry :
                             ws_ertn  ? ertn_entry :
                                 br_taken ? br_target :                         
                                    seq_pc;
