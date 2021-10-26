@@ -41,14 +41,25 @@ wire        ms_csr_we;
 wire [13:0] ms_csr_num;
 wire [31:0] ms_csr_wdata;
 wire [31:0] ms_csr_wmask;
+wire        ms_has_int;
 wire        ms_csr_ertn;
 wire        ms_sys_exce;
+wire        ms_ine_exce;
+wire        ms_mem_exce;
+wire        ms_brk_exce;
+wire        ms_pc_exce;
 wire [ 4:0] ms_dest;
 wire [31:0] ms_alu_result;
 wire [31:0] ms_pc;
+wire        ms_rdcntid;
 
 assign {
-        // ms_pc_exce     ,
+        ms_rdcntid     ,//162:162
+        ms_has_int     ,//161:161
+        ms_ine_exce    ,//160:160
+        ms_mem_exce    ,//159:159
+        ms_brk_exce    ,//158:158
+        ms_pc_exce     ,//157:157
         ms_csr_ertn    ,//156:156
         ms_sys_exce    ,//155:155
         ms_csr_num     ,//154:141 
@@ -73,6 +84,13 @@ wire [31:0] mem_result;
 wire [31:0] ms_final_result;
 
 assign ms_to_ws_bus = {
+                       ms_rdcntid     ,  //188:188
+                       ms_has_int     ,  //187:187
+                       ms_ine_exce    ,  //186:186
+                       ms_mem_exce    ,  //185:185
+                       ms_brk_exce    ,  //184:184
+                       ms_alu_result  ,  //183:152
+                       ms_pc_exce     ,  //151:151
                        ms_csr_ertn    ,  //150:150
                        ms_sys_exce    ,  //149:149
                        ms_csr_num     ,  //148:135
@@ -90,9 +108,10 @@ wire [ 4:0] ms_ds_dest;
 wire        ms_csr_gr;
 assign ms_csr_gr = ms_csr_we & ms_valid;
 
-assign ms_ex_int = (ms_sys_exce | ms_csr_ertn) && ms_valid;
+assign ms_ex_int = (ms_sys_exce | ms_csr_ertn | ms_mem_exce | ms_brk_exce | ms_pc_exce | ms_ine_exce) && ms_valid;
 
 assign ms_to_ds_bus = {
+                       ms_rdcntid && ms_valid ,    //53:53
                        ms_csr_gr   ,    //52:52
                        ms_csr_num  ,    //51:38 
                        ms_ds_we    ,    //37:37

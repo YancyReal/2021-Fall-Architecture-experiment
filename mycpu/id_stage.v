@@ -22,9 +22,11 @@ module id_stage(
     input  [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus  ,
 
     // from crs
+    input                           ds_has_int,
     input  [31:0]                   ds_csr_rdata ,
     output [13:0]                   ds_csr_num   ,
     output                          ds_csr_re    ,
+
     input                           es_ex_int    ,
     input                           ms_ex_int    ,
     input                           ws_ex_int
@@ -41,16 +43,19 @@ reg  [`FS_TO_DS_BUS_WD -1:0] fs_to_ds_bus_r;
 wire ds_csr_we;
 wire [31:0] ds_csr_wdata;
 wire [31:0] ds_csr_wmask;
-wire ds_sys_exce;
-wire csr_block;
+wire ds_sys_exce        ;
+wire csr_block          ;
+wire rdcntid_block;
 
-wire [31:0] ds_inst;
-wire [31:0] ds_pc  ;
-// wire        ds_pc_exce;
-assign {
-    // ds_pc_exce,
-        ds_inst,
-        ds_pc  } = fs_to_ds_bus_r;
+
+wire [31:0] ds_inst     ;
+wire [31:0] ds_pc       ;
+wire        ds_pc_exce  ;
+assign {  
+        ds_pc_exce,    //64:64
+        ds_inst   ,    //63:32 
+        ds_pc          //31:0
+        } = fs_to_ds_bus_r;
 
 wire        es_we    ;
 wire [4:0]  es_dest  ;
@@ -58,9 +63,12 @@ wire [31:0] es_result;
 wire        es_load;
 wire        es_csr_gr;
 wire [13:0] es_csr_num;
+wire es_rdcntid;
+
 assign {
-        es_csr_gr    ,   //52:52
-        es_csr_num   ,   //39:51
+        es_rdcntid   ,   //54:54
+        es_csr_gr    ,   //53:53
+        es_csr_num   ,   //39:52
         es_we        ,   //38:38
         es_dest      ,   //37:33
         es_result    ,   //32:1
@@ -72,7 +80,9 @@ wire [4:0]  ms_dest  ;
 wire [31:0] ms_result;
 wire        ms_csr_gr;
 wire [13:0] ms_csr_num;
+wire ms_rdcntid;
 assign {
+        ms_rdcntid  ,  //53:53
         ms_csr_gr   ,  //52:52
         ms_csr_num  ,  //51:38
         ms_we       ,  //37:37
@@ -90,8 +100,11 @@ wire [ 4:0] rf_waddr;
 wire [31:0] rf_wdata;
 wire        ws_csr_gr;
 wire [13:0] ws_csr_num;
+wire ws_rdcntid;
+
 assign {
-        ws_csr_gr   ,     //51:52
+        ws_rdcntid  ,     //53:53
+        ws_csr_gr   ,     //52:52
         ws_csr_num  ,     //51:38
         rf_we       ,     //37:37
         rf_waddr    ,     //36:32
@@ -124,6 +137,7 @@ wire [ 5:0] op_31_26;
 wire [ 3:0] op_25_22;
 wire [ 1:0] op_21_20;
 wire [ 4:0] op_19_15;
+wire [ 4:0] op_14_10; 
 wire [ 4:0] rd;
 wire [ 4:0] rj;
 wire [ 4:0] rk;
@@ -136,6 +150,7 @@ wire [63:0] op_31_26_d;
 wire [15:0] op_25_22_d;
 wire [ 3:0] op_21_20_d;
 wire [31:0] op_19_15_d;
+wire [31:0] op_14_10_d;
 
 wire        inst_add_w; 
 wire        inst_sub_w;  
@@ -190,6 +205,12 @@ wire        inst_csrwr;
 wire        inst_csrxchg;
 wire        inst_ertn;
 wire        inst_syscall;
+wire        inst_rdcntvl_w;
+wire        inst_rdcntvh_w;
+wire        inst_rdcntid;
+wire        inst_break;
+
+wire        ds_ine_exce;      //不是定义的任何一条指令
 
 wire        need_ui5;
 wire        need_si12;
@@ -210,36 +231,51 @@ wire        rj_less_urd;
 assign br_bus       = {br_taken,br_target};
 assign load_op = res_from_mem;
 assign ds_to_es_bus = {
-                    //    ds_pc_exce  ,
-                       inst_ertn   ,  //278:278
-                       ds_sys_exce ,  //277:277
-                       ds_csr_num  ,  //276:263
-                       ds_csr_we   ,  //262:262
-                       ds_csr_re   ,  //261:261                     
-                       ds_csr_wdata,  //260:229 
-                       ds_csr_wmask,  //228:197
-                       ds_csr_rdata,  //196:165
-                       ds_st_inst  ,  //164:162
-                       ds_ld_inst  ,  //161:157
-                       div_op      ,  //156:153
-                       alu_op      ,  //152:138
-                       load_op     ,  //137:137
-                       src1_is_pc  ,  //136:136
-                       src2_is_imm ,  //135:135
-                       gr_we       ,  //134:134
-                       mem_we      ,  //133:133
-                       dest        ,  //132:128
-                       ds_imm      ,  //127:96
-                       rj_value    ,  //95 :64
-                       rkd_value   ,  //63 :32
-                       ds_pc          //31 :0
+                       inst_rdcntid  ,  //285:285
+                       ds_has_int    ,  //284:284
+                       inst_rdcntvl_w,  //283:283
+                       inst_rdcntvh_w,  //282:282
+                       ds_ine_exce   ,  //280:281
+                       ds_break_exce ,  //280:280
+                       ds_pc_exce    ,  //279:279
+                       inst_ertn     ,  //278:278
+                       ds_sys_exce   ,  //277:277
+                       ds_csr_num    ,  //276:263
+                       ds_csr_we     ,  //262:262
+                       ds_csr_re     ,  //261:261                     
+                       ds_csr_wdata  ,  //260:229 
+                       ds_csr_wmask  ,  //228:197
+                       ds_csr_rdata  ,  //196:165
+                       ds_st_inst    ,  //164:162
+                       ds_ld_inst    ,  //161:157
+                       div_op        ,  //156:153
+                       alu_op        ,  //152:138
+                       load_op       ,  //137:137
+                       src1_is_pc    ,  //136:136
+                       src2_is_imm   ,  //135:135
+                       gr_we         ,  //134:134
+                       mem_we        ,  //133:133
+                       dest          ,  //132:128
+                       ds_imm        ,  //127:96
+                       rj_value      ,  //95 :64
+                       rkd_value     ,  //63 :32
+                       ds_pc            //31 :0
                       };
 
-assign ds_block   = (es_load && (es_dest == rf_raddr1 || es_dest == rf_raddr2) && !ms_ex_int && !es_ex_int && !ws_ex_int) | csr_block;
+assign ds_block   = (es_load && (es_dest == rf_raddr1 && rf_raddr1 != 0 
+                             ||  es_dest == rf_raddr2 && rf_raddr2 != 0) 
+                             && !ms_ex_int && !es_ex_int && !ws_ex_int) | csr_block | rdcntid_block;
 assign csr_block  = ((es_csr_gr && (es_csr_num == ds_csr_num)) | 
                      (ms_csr_gr && (ms_csr_num == ds_csr_num)) |
                      (ws_csr_gr && (ws_csr_num == ds_csr_num)) 
                     ) && ds_csr_re;
+
+assign rdcntid_block = (   ((es_dest == rf_raddr1 && rf_raddr1 != 0 || 
+                            es_dest == rf_raddr2 && rf_raddr2 != 0)   && es_rdcntid)
+                        || ((ms_dest == rf_raddr1 && rf_raddr1 != 0 || 
+                            ms_dest == rf_raddr2 && rf_raddr2 != 0)   && ms_rdcntid)
+                        || ((ws_dest == rf_raddr1 && rf_raddr1 != 0 ||
+                            ws_dest == rf_raddr2 && rf_raddr2 != 0)   && ws_rdcntid));
 
 assign ds_ready_go    = !ds_block;
 assign ds_allowin     = !ds_valid || ds_ready_go && es_allowin;
@@ -263,6 +299,7 @@ assign op_31_26  = ds_inst[31:26];
 assign op_25_22  = ds_inst[25:22];
 assign op_21_20  = ds_inst[21:20];
 assign op_19_15  = ds_inst[19:15];
+assign op_14_10  = ds_inst[14:10];
 
 assign rd   = ds_inst[ 4: 0];
 assign rj   = ds_inst[ 9: 5];
@@ -279,6 +316,7 @@ decoder_6_64 u_dec0(.in(op_31_26 ), .out(op_31_26_d ));
 decoder_4_16 u_dec1(.in(op_25_22 ), .out(op_25_22_d ));
 decoder_2_4  u_dec2(.in(op_21_20 ), .out(op_21_20_d ));
 decoder_5_32 u_dec3(.in(op_19_15 ), .out(op_19_15_d ));
+decoder_5_32 u_dec4(.in(op_14_10 ), .out(op_14_10_d ));
 
 assign inst_add_w  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h00];
 assign inst_sub_w  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h02];
@@ -330,7 +368,27 @@ assign inst_csrrd     = op_31_26_d[6'h01] & ~ds_inst[25] & ~ds_inst[24] & (rj ==
 assign inst_csrwr     = op_31_26_d[6'h01] & ~ds_inst[25] & ~ds_inst[24] & (rj == 5'b1);
 assign inst_csrxchg   = op_31_26_d[6'h01] & ~ds_inst[25] & ~ds_inst[24] & |(rj[4:1]);
 assign inst_ertn      = ds_inst[31:10] == 22'b0000011001001000001110;
-assign inst_syscall   =  op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h16];
+assign inst_break     = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h14];
+assign inst_syscall   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h16];
+assign inst_rdcntid   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & op_19_15_d[5'h00] & op_14_10_d[5'h18] & !(|(rd[4:0])); 
+assign inst_rdcntvl_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & op_19_15_d[5'h00] & op_14_10_d[5'h18] & !(|(rj[4:0]));
+assign inst_rdcntvh_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & op_19_15_d[5'h00] & op_14_10_d[5'h19] & !(|(rj[4:0]));
+
+assign ds_ine_exce =  ~(inst_add_w    | inst_sub_w     | inst_slt     | inst_sltu      | inst_nor      |
+                        inst_and      | inst_or        | inst_xor     | inst_slli_w    | inst_srli_w   |
+                        inst_srai_w   | inst_addi_w    |
+                        inst_slti     | inst_sltui     | inst_andi    | inst_ori       | inst_xori     |
+                        inst_sll_w    | inst_srl_w     | inst_sra_w   | inst_pcaddu12i | inst_mul_w    |
+                        inst_mulh_w   | inst_mulh_wu   | inst_div_w   | inst_div_wu    | inst_mod_w    |
+                        inst_mod_wu   | inst_lu12i_w   |
+                        inst_jirl     | inst_beq       | inst_bne     | inst_blt       | inst_bge      |
+                        inst_bltu     | inst_bgeu      | inst_b       | inst_bl        |
+                        inst_ld_w     | inst_ld_b      | inst_ld_h    | inst_ld_hu     | inst_ld_bu    |
+                        inst_st_w     | inst_st_h      | inst_st_b    | 
+                        inst_csrrd    | inst_csrwr     | inst_csrxchg | 
+                        inst_ertn     | inst_syscall   | inst_break   |
+                        inst_rdcntvl_w| inst_rdcntvh_w | inst_rdcntid                                  );
+
 
 assign alu_op[ 0] = inst_add_w | inst_addi_w | inst_ld_w | inst_ld_b | inst_ld_h | inst_ld_bu | inst_ld_hu |  inst_st_w | inst_st_b | inst_st_h
                     | inst_jirl | inst_bl | inst_pcaddu12i;
@@ -356,7 +414,8 @@ assign div_op[3] = inst_mod_wu;
 
 assign ds_csr_re = inst_csrrd | inst_csrxchg | inst_csrwr;
 assign ds_csr_we = inst_csrwr | inst_csrxchg;
-assign ds_sys_exce = inst_syscall;
+assign ds_break_exce = inst_break  ;
+assign ds_sys_exce   = inst_syscall;
 
 assign ds_ld_inst[0] = inst_ld_w ;
 assign ds_ld_inst[1] = inst_ld_b ;
@@ -422,9 +481,10 @@ assign src2_is_imm   = inst_slli_w    |
 assign res_from_mem  = inst_ld_w | inst_ld_b | inst_ld_h | inst_ld_bu | inst_ld_hu;
 assign dst_is_r1     = inst_bl;
 assign gr_we         = ~inst_st_w & ~inst_st_b & ~inst_st_h & ~inst_beq & ~inst_bne & ~inst_blt & ~inst_bge & 
-                       ~inst_bltu & ~inst_bgeu & ~inst_b & ~inst_ertn & ~inst_syscall;
+                       ~inst_bltu & ~inst_bgeu & ~inst_b & ~inst_ertn & ~inst_syscall & ~ds_ine_exce;
 assign mem_we        = inst_st_w | inst_st_b | inst_st_h;
-assign dest          = dst_is_r1 ? 5'd1 : rd;
+assign dest          = dst_is_r1    ? 5'd1 :
+                       inst_rdcntid ? rj   : rd;
 
 assign rf_raddr1 = rj;
 assign rf_raddr2 = src_reg_is_rd ? rd :rk;
@@ -446,11 +506,11 @@ assign ws_result =  rf_wdata;
 assign rj_value  = (es_we && rf_raddr1 == es_dest && |rf_raddr1) ? es_result :
                    (ms_we && rf_raddr1 == ms_dest && |rf_raddr1) ? ms_result :
                    (ws_we && rf_raddr1 == ws_dest && |rf_raddr1) ? ws_result :
-                                                     rf_rdata1 ;
+                                                                   rf_rdata1 ;
 assign rkd_value = (es_we && rf_raddr2 == es_dest && |rf_raddr2) ? es_result :
                    (ms_we && rf_raddr2 == ms_dest && |rf_raddr2) ? ms_result :
                    (ws_we && rf_raddr2 == ws_dest && |rf_raddr2) ? ws_result :
-                                                     rf_rdata2 ;
+                                                                   rf_rdata2 ;
 
 assign ds_csr_wdata = rkd_value;
 assign ds_csr_wmask = (inst_csrxchg) ? rj_value : ~(32'b0);

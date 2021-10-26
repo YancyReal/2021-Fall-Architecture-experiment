@@ -23,23 +23,51 @@ module exe_stage(
     input                            ms_ex_int   ,
     input                            ws_ex_int   ,
     // to fs
-    input                            ws_block
+    input                            ws_block,
+    // csr
+    output                           es_cnt_op,
+    input [31:0]                     es_cnt
 );
 
 reg         es_valid      ;
 wire        es_ready_go   ;
 
+reg  [63:0] stable_couter;
+wire [31:0] es_clk_data;
+wire es_rdcntid;
+wire es_rdcntvh_w;
+wire es_rdcntvl_w;
+wire es_clk_op = es_rdcntvh_w | es_rdcntvl_w ;
+
+always @(posedge clk) begin
+    if (reset || stable_couter == ~(64'b0)) begin     
+        stable_couter <= 64'b0;
+    end
+    else begin 
+        stable_couter <= stable_couter + 1;
+    end
+end
+
+assign es_clk_data = es_rdcntvh_w ? stable_couter[63:32] : stable_couter[31:0];
+
 reg  [`DS_TO_ES_BUS_WD -1:0] ds_to_es_bus_r;
-// wire        es_pc_exce    ;
-// wire        es_mem_exce   ;
+wire es_pc_exce     ;
+wire [31:0]es_bad_pc;
+wire load_exce      ;
+wire store_exce     ;
+wire es_mem_exce    ;
+
 wire es_csr_we;
 wire es_csr_re;
-wire [13:0] es_csr_num;
+wire [13:0] es_csr_num  ;
 wire [31:0] es_csr_rdata;
 wire [31:0] es_csr_wdata;
 wire [31:0] es_csr_wmask;
+wire        es_has_int;
 wire        es_csr_ertn;
 wire        es_sys_exce;
+wire        es_brk_exce;
+wire        es_ine_exce;
 wire        es_csr_gr;
 
 assign es_csr_gr = es_csr_we & es_valid;
@@ -58,9 +86,14 @@ wire [31:0] es_rj_value   ;
 wire [31:0] es_rkd_value  ;
 wire [31:0] es_pc         ;
 
+
 wire        es_res_from_mem;
 wire        es_ld_op;
 wire [4:0]  es_ld_inst;
+
+wire es_ld_b;
+wire es_ld_h;
+wire es_ld_w;
 
 wire es_st_b;
 wire es_st_h;
@@ -69,7 +102,13 @@ wire [2: 0] es_st_inst;
 wire [3: 0] es_store_strb;
 wire [31:0] es_store_data;
 assign {
-        // es_pc_exce  ,
+        es_rdcntid     ,  //285:285
+        es_has_int     ,  //284:284
+        es_rdcntvl_w   ,  //282:282
+        es_rdcntvh_w   ,  //283:283
+        es_ine_exce    ,  //281:281
+        es_brk_exce    ,  //280:280
+        es_pc_exce     ,  //279:279
         es_csr_ertn    ,  //278:278
         es_sys_exce    ,  //277:277
         es_csr_num     ,  //276:263
@@ -104,6 +143,7 @@ wire         es_ds_we;
 wire [4: 0]  es_ds_dest;
 
 assign es_to_ds_bus = {
+                       es_rdcntid && es_valid ,     //54:54
                        es_csr_gr              ,     //53:33
                        es_csr_num             ,     //52:39
                        es_ds_we               ,     //38:38         
@@ -114,7 +154,12 @@ assign es_to_ds_bus = {
 
 assign es_res_from_mem = es_ld_op;
 assign es_to_ms_bus = {
-                    //    es_pc_exce     ,
+                       es_rdcntid     ,  //162:162
+                       es_has_int     ,  //161:161
+                       es_ine_exce    ,  //160:160
+                       es_mem_exce    ,  //159:159
+                       es_brk_exce    ,  //158:158
+                       es_pc_exce     ,  //157:157
                        es_csr_ertn    ,  //156:156
                        es_sys_exce    ,  //155:155
                        es_csr_num     ,  //154:141
@@ -128,7 +173,7 @@ assign es_to_ms_bus = {
                        es_result      ,  //63:32
                        es_pc             //31:0
                       };
-assign es_ex_int = (es_sys_exce | es_csr_ertn) & es_valid;
+assign es_ex_int = (es_sys_exce | es_csr_ertn | es_mem_exce | es_brk_exce | es_pc_exce | es_ine_exce | es_has_int) & es_valid;
 //div var declaration part
 
 wire div_block;
@@ -284,14 +329,18 @@ div_unsigned div_unsigned(
   .m_axis_dout_tvalid     (div_tvalid_unsigned)
 );
 
-assign es_result = 
-                   (es_div_op[0] | es_div_op[1]) ? div_result :
-                   (es_div_op[2] | es_div_op[3]) ? mod_result :
-                   (es_csr_re)                   ? es_csr_rdata:
+assign es_result = (es_div_op[0] | es_div_op[1]) ? div_result   :
+                   (es_div_op[2] | es_div_op[3]) ? mod_result   :
+                   (es_csr_re)                   ? es_csr_rdata :
+                   (es_clk_op)                   ? es_clk_data  :
                                                    es_alu_result;
 
 assign es_ds_we    = es_valid && es_gr_we;
 assign es_ds_dest  = es_dest;
+
+assign es_ld_w = es_ld_inst[0];
+assign es_ld_b = es_ld_inst[1] | es_ld_inst[3];
+assign es_ld_h = es_ld_inst[2] | es_ld_inst[4];
 
 assign es_st_b = es_st_inst[0];
 assign es_st_h = es_st_inst[1];
@@ -310,13 +359,14 @@ assign es_store_data = es_st_b ? {4{es_rkd_value[7: 0]}}:
                        es_st_h ? {2{es_rkd_value[15:0]}}:
                                     es_rkd_value        ;    //es_st_w or orher all
 
-// assign es_mem_exce =   
-                    // ((es_st_h | es_ld_inst[2] | es_ld_inst[4]) & ~es_alu_result[0]) |       // sh, lh,lhu
-                    // ((es_st_w | es_ld_inst[0])                  & |(es_alu_result[1:0]));   // sw, lw
+
+assign load_exce   = (es_ld_w && ~(es_alu_result[1:0] == 2'b00)) || (es_ld_h && es_alu_result[0]);
+assign store_exce  = (es_st_w && ~(es_alu_result[1:0] == 2'b00)) || (es_st_h && es_alu_result[0]);
+assign es_mem_exce = load_exce | store_exce;
 
 assign data_sram_en    = (es_res_from_mem || es_mem_we) && es_valid;
-//lab8 中断发生时要回弹流水线阻止在流水线上的ST指令写内存，因为数据ram是即时相应的
-assign data_sram_wen   = (es_mem_we && es_valid && !ms_ex_int && !ws_ex_int) ? es_store_strb : 4'h0;
+//lab8 中断发生时要回弹流水线阻止在流水线上的ST指令写内存
+assign data_sram_wen   = (es_mem_we && es_valid && !ms_ex_int && !ws_ex_int && !es_mem_exce) ? es_store_strb : 4'h0;
 assign data_sram_addr  = {es_alu_result[31:2], 2'b0};
 assign data_sram_wdata = es_store_data;
 

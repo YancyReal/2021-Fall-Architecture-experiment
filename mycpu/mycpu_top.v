@@ -1,3 +1,4 @@
+`include "mycpu.h"
 module mycpu_top(
     input         clk,
     input         resetn,
@@ -51,10 +52,12 @@ wire [31:0] ertn_entry;
 wire has_int;
 wire eret_flush;
 wire wb_ex;
+wire [31:0] wb_vaddr;
 wire [5:0]  wb_ecode;
 wire [8:0]  wb_esubcode;
 wire [1:0] ws_to_fs_bus;
 wire ws_block;
+wire [31:0] tid_rvalue;
 
 // IF stage
 if_stage if_stage(
@@ -102,9 +105,11 @@ id_stage id_stage(
     //feedback from ms
     .ms_to_ds_bus   (ms_to_ds_bus   ),
     // from csr
+    .ds_has_int     (has_int),
     .ds_csr_rdata   (csr_rvalue     ),
     .ds_csr_num     (csr_rnum       ),
     .ds_csr_re      (csr_re         ),
+
     .es_ex_int      (es_ex_int      ),
     .ms_ex_int      (ms_ex_int      ),
     .ws_ex_int      (ws_block       )
@@ -176,10 +181,12 @@ wb_stage wb_stage(
     .ws_csr_num     (csr_wnum       ),
     .ws_csr_wdata   (csr_wvalue     ),
     .ws_csr_wmask   (csr_wmask      ),
-    .ws_csr_has_int (has_int        ),
+    // .ws_csr_has_int (has_int        ),
     .ws_csr_eret_flush(eret_flush   ),
     .ws_csr_ecode   (wb_ecode       ),
     .ws_csr_esubcode(wb_esubcode    ),
+    .ws_vaddr       (wb_vaddr       ),
+    .ws_tid_rvalue  (tid_rvalue     ),
 
     //trace debug interface
     .debug_wb_pc      (debug_wb_pc      ),
@@ -204,9 +211,11 @@ csr u_csr(
     .has_int      (has_int    ),
     .eret_flush   (eret_flush ),
     .wb_ex        (wb_ex      ),
+    .wb_vaddr     (wb_vaddr   ),
     .wb_ecode     (wb_ecode   ),
     .wb_esubcode  (wb_esubcode),
-    .wb_pc        (debug_wb_pc)
+    .wb_pc        (debug_wb_pc),
+    .tid_rvalue   (tid_rvalue)
 );
 
 endmodule

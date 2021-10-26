@@ -19,10 +19,11 @@ module wb_stage(
     output [13:0]                   ws_csr_num       ,
     output [31:0]                   ws_csr_wdata     ,
     output [31:0]                   ws_csr_wmask     ,
-    output                          ws_csr_has_int   ,
     output                          ws_csr_eret_flush,
+    output [31:0]                   ws_vaddr         ,
     output [5:0]                    ws_csr_ecode     ,
     output [8:0]                    ws_csr_esubcode  ,
+    input  [31:0]                   ws_tid_rvalue    ,
     //trace debug interface
     output [31:0] debug_wb_pc     ,
     output [ 3:0] debug_wb_rf_wen ,
@@ -34,17 +35,27 @@ reg         ws_valid;
 wire        ws_ready_go;
 
 reg [`MS_TO_WS_BUS_WD -1:0] ms_to_ws_bus_r;
-// wire        ws_pc_exce;
-
+wire [31:0] ws_error_vaddr;
+wire        ws_has_int;
+wire        ws_pc_exce;
+wire        ws_mem_exce;
+wire        ws_brk_exce;
 wire        ws_sys_exce;
 wire        ws_gr_we;
 wire [ 4:0] ws_dest;
 wire [31:0] ws_final_result;
 wire [31:0] ws_pc;
-wire        ws_block;
 wire        ws_ertn;
+wire        ws_rdcntid;
+
 assign {
-        // ws_pc_exce     ,
+        ws_rdcntid     ,  //188:188
+        ws_has_int     ,  //187:187
+        ws_ine_exce    ,  //186:186
+        ws_mem_exce    ,  //185:185
+        ws_brk_exce    ,  //184:184
+        ws_error_vaddr ,  //183:152
+        ws_pc_exce     ,  //151:151
         ws_ertn        ,  //150:150
         ws_sys_exce    ,  //149:149
         ws_csr_num     ,  //148:135
@@ -62,14 +73,22 @@ assign ws_to_fs_bus = {
                        ws_ex
                       };
 
-assign ws_csr_ecode = 6'hb;
 assign ws_csr_eret_flush = ws_ertn && ws_valid;
-assign ws_csr_esubcode = 9'd0;
-assign ws_ex = ws_sys_exce && ws_valid;
-assign ws_pc_we = ws_ex | ws_ertn;
-assign ws_block = ws_pc_we & ws_valid;
-assign ws_csr_has_int = 0;
+assign ws_ex = (ws_sys_exce || ws_pc_exce || ws_mem_exce || ws_brk_exce || ws_ine_exce || ws_has_int) && ws_valid;
+assign ws_vaddr = ws_error_vaddr;
+assign ws_block = ws_ex | ws_csr_eret_flush;         //进入调用或者退出的清空信号
 
+
+
+assign ws_csr_ecode   = ws_pc_exce  ? `ECODE_ADE :
+                        ws_mem_exce ? `ECODE_ALE :
+                        ws_sys_exce ? `ECODE_SYS :
+                        ws_brk_exce ? `ECODE_BRK :
+                        ws_ine_exce ? `ECODE_INE :
+                                        6'b0     ;
+                                    
+assign ws_csr_esubcode = ws_pc_exce  ? `ESUBCODE_ADEF :
+                                     1'b0;
 
 wire        rf_we;
 wire [4 :0] rf_waddr;
@@ -77,6 +96,7 @@ wire [31:0] rf_wdata;
 wire        ws_csr_gr;
 assign ws_csr_gr = ws_csr_we & ws_valid;
 assign ws_to_rf_bus = {
+                       ws_rdcntid && ws_valid ,   //53:53
                        ws_csr_gr   ,   //52:52
                        ws_csr_num  ,   //51:38  
                        rf_we       ,   //37:37
@@ -100,9 +120,9 @@ always @(posedge clk) begin
     end
 end
 
-assign rf_we    = ws_gr_we&&ws_valid;
+assign rf_we    = ws_gr_we && ws_valid && ~ws_ex;
 assign rf_waddr = ws_dest;
-assign rf_wdata = ws_final_result;
+assign rf_wdata = ws_rdcntid ? ws_tid_rvalue : ws_final_result;
 
 // debug info generate
 assign debug_wb_pc       = ws_pc;

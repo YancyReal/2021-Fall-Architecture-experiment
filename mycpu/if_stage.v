@@ -25,8 +25,6 @@ module if_stage(
 
 );
 
-// wire  fs_pc_exce;
-
 reg         fs_valid;
 wire        fs_ready_go;
 wire        fs_allowin;
@@ -34,6 +32,7 @@ wire        to_fs_valid;
 
 wire [31:0] seq_pc;
 wire [31:0] nextpc;
+wire  fs_pc_exce;              //取指异常信号
 
 wire         br_taken;
 wire [ 31:0] br_target;
@@ -42,9 +41,10 @@ assign {br_taken,br_target} = br_bus;
 wire [31:0] fs_inst;
 reg  [31:0] fs_pc;
 assign fs_to_ds_bus = {
-                    //    fs_pc_exce,
-                       fs_inst ,
-                       fs_pc   };
+                       fs_pc_exce,      //64:64
+                       fs_inst   ,      //63:32   
+                       fs_pc            //31:0
+                       };
 
 wire ws_ex;
 wire ws_ertn;
@@ -55,11 +55,11 @@ assign {ws_ertn,   //2:2
 // pre-IF stage
 assign to_fs_valid  = ~reset;
 assign seq_pc       = fs_pc + 3'h4;
-assign nextpc       =   ws_ex ?  : ex_entry
+assign nextpc       =   ws_ex ?  ex_entry :
                             ws_ertn  ? ertn_entry :
                                 br_taken ? br_target :                         
                                    seq_pc;
-// assign fs_pc_exce = |nextpc[1:0]; // pc[1:0] != 0;
+
 // IF stage
 assign fs_ready_go    = 1'b1;
 assign fs_allowin     = !fs_valid || fs_ready_go && ds_allowin;
@@ -88,5 +88,8 @@ assign inst_sram_addr  = nextpc;
 assign inst_sram_wdata = 32'b0;
 
 assign fs_inst         = inst_sram_rdata;
+
+//lab9
+assign fs_pc_exce = |fs_pc[1:0]; // pc[1:0] != 0 ADEE;
 
 endmodule
