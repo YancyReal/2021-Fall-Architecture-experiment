@@ -1,13 +1,13 @@
 `ifndef MYCPU_H
     `define MYCPU_H
 
-    `define BR_BUS_WD 33
+    `define BR_BUS_WD 34
     `define FS_TO_DS_BUS_WD 65
     `define DS_TO_ES_BUS_WD 286
-    `define ES_TO_MS_BUS_WD 163
+    `define ES_TO_MS_BUS_WD 164
     `define MS_TO_WS_BUS_WD 189
     `define ES_TO_DS_BUS_WD 55
-    `define MS_TO_DS_BUS_WD 54
+    `define MS_TO_DS_BUS_WD 55
     `define WS_TO_RF_BUS_WD 54
 
     // CSR

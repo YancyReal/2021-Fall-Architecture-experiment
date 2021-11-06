@@ -32,8 +32,9 @@ module id_stage(
     input                           ws_ex_int
 );
 
-reg         ds_valid   ;
-wire        ds_block   ;
+reg         ds_valid;
+wire        ds_block;
+wire        ds_cancel;
 wire        ds_ready_go;
 
 reg  [`FS_TO_DS_BUS_WD -1:0] fs_to_ds_bus_r;
@@ -78,10 +79,12 @@ assign {
 wire        ms_we    ;
 wire [4:0]  ms_dest  ;
 wire [31:0] ms_result;
+wire        ms_load;
 wire        ms_csr_gr;
 wire [13:0] ms_csr_num;
 wire ms_rdcntid;
 assign {
+        ms_load     ,  //54:54
         ms_rdcntid  ,  //53:53
         ms_csr_gr   ,  //52:52
         ms_csr_num  ,  //51:38
@@ -111,7 +114,9 @@ assign {
         rf_wdata          //31:0
        } = ws_to_rf_bus;
 
+wire        br_stall;
 wire        br_taken;
+wire        br_taken_cancel;
 wire [31:0] br_target;
 
 wire [14:0] alu_op;
@@ -228,7 +233,7 @@ wire        rj_eq_rd;
 wire        rj_less_rd;
 wire        rj_less_urd;
 
-assign br_bus       = {br_taken,br_target};
+assign br_bus       = {br_stall, br_taken_cancel, br_target};
 assign load_op = res_from_mem;
 assign ds_to_es_bus = {
                        inst_rdcntid  ,  //285:285
@@ -261,10 +266,11 @@ assign ds_to_es_bus = {
                        rkd_value     ,  //63 :32
                        ds_pc            //31 :0
                       };
-
-assign ds_block   = (es_load && (es_dest == rf_raddr1 && rf_raddr1 != 0 
-                             ||  es_dest == rf_raddr2 && rf_raddr2 != 0) 
-                             && !ms_ex_int && !es_ex_int && !ws_ex_int) | csr_block | rdcntid_block;
+assign load_block = (es_load && (es_dest == rf_raddr1 && rf_raddr1 != 0 
+                             ||  es_dest == rf_raddr2 && rf_raddr2 != 0) ||
+                     ms_load && (ms_dest == rf_raddr1 && rf_raddr1 != 0
+                             ||  ms_dest == rf_raddr2 && rf_raddr2 != 0)
+                             && !ms_ex_int && !es_ex_int && !ws_ex_int);
 assign csr_block  = ((es_csr_gr && (es_csr_num == ds_csr_num)) | 
                      (ms_csr_gr && (ms_csr_num == ds_csr_num)) |
                      (ws_csr_gr && (ws_csr_num == ds_csr_num)) 
@@ -276,13 +282,14 @@ assign rdcntid_block = (   ((es_dest == rf_raddr1 && rf_raddr1 != 0 ||
                             ms_dest == rf_raddr2 && rf_raddr2 != 0)   && ms_rdcntid)
                         || ((ws_dest == rf_raddr1 && rf_raddr1 != 0 ||
                             ws_dest == rf_raddr2 && rf_raddr2 != 0)   && ws_rdcntid));
+assign ds_block   =  load_block | csr_block | rdcntid_block;
 
 assign ds_ready_go    = !ds_block;
 assign ds_allowin     = !ds_valid || ds_ready_go && es_allowin;
-assign ds_to_es_valid = ds_valid && ds_ready_go && !ws_ex_int;
-
+assign ds_to_es_valid = ds_valid && ds_ready_go;
+assign ds_cancel      = (ws_ex_int || br_taken_cancel) && !ds_block;
 always @(posedge clk) begin
-    if (reset) begin     
+    if (reset || ds_cancel) begin     
         ds_valid <= 1'b0;
     end
     else if (ds_allowin) begin 
@@ -528,6 +535,9 @@ assign rj_eq_rd    = (rj_value == rkd_value);
 assign rj_less_rd  = ds_alu_result[0] & ds_alu_op[0];  //slt
 assign rj_less_urd = ds_alu_result[0] & ds_alu_op[1];  //sltu
 
+
+// 判断转移计算完成与否 1:未完成
+assign br_stall = ds_valid && (load_block || rdcntid_block);
 assign br_taken = (   inst_beq  &&  rj_eq_rd
                    || inst_bne  && !rj_eq_rd
                    || inst_blt  &&  rj_less_rd
@@ -538,7 +548,7 @@ assign br_taken = (   inst_beq  &&  rj_eq_rd
                    || inst_bl
                    || inst_b
                   ) && ds_valid; 
-                  
+assign br_taken_cancel = br_taken && !br_stall;
 assign br_target = (inst_beq || inst_bne || inst_blt || inst_bge || inst_bltu || inst_bgeu 
                                                      || inst_bl  || inst_b) ? (ds_pc + br_offs) :
                                                            /*inst_jirl*/ (rj_value + jirl_offs) ;

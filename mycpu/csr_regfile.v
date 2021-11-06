@@ -47,7 +47,6 @@ reg csr_tcfg_periodic;
 reg [29:0] csr_tcfg_initval;
 reg [31:0] timer_cnt;
 reg [31:0] csr_ticlr;
-reg [63:0] cnt;
 
 wire [31:0] csr_crmd_rvalue   = {28'b0, csr_crmd_da, csr_crmd_ie, csr_crmd_plv};
 wire [31:0] csr_prmd_rvalue   = {29'b0, csr_prmd_pie, csr_prmd_pplv};

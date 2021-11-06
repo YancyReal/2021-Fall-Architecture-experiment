@@ -3,25 +3,37 @@ module mycpu_top(
     input         clk,
     input         resetn,
     // inst sram interface
-    output        inst_sram_en,
-    output [ 3:0] inst_sram_wen,
-    output [31:0] inst_sram_addr,
-    output [31:0] inst_sram_wdata,
-    input  [31:0] inst_sram_rdata,
+    output        inst_sram_req,     //lab10
+    output        inst_sram_wr,      //lab10
+    output [ 1:0] inst_sram_size,    //lab10
+    output [31:0] inst_sram_addr,    //lab10
+    output [ 3:0] inst_sram_wstrb,   //lab10
+    output [31:0] inst_sram_wdata,   //lab10
+    input  [31:0] inst_sram_rdata,   //lab10
+    input         inst_sram_addr_ok, //lan10
+    input         inst_sram_data_ok, //lab10
     // data sram interface
-    output        data_sram_en,
-    output [ 3:0] data_sram_wen,
-    output [31:0] data_sram_addr,
-    output [31:0] data_sram_wdata,
-    input  [31:0] data_sram_rdata,
+    output        data_sram_req,     //lab10
+    output        data_sram_wr,      //lab10
+    output [ 1:0] data_sram_size,    //lab10
+    output [31:0] data_sram_addr,    //lab10
+    output [ 3:0] data_sram_wstrb,   //lab10
+    output [31:0] data_sram_wdata,   //lab10
+    input  [31:0] data_sram_rdata,   //lab10
+    input         data_sram_addr_ok, //lan10
+    input         data_sram_data_ok, //lab10
     // trace debug interface
     output [31:0] debug_wb_pc,
     output [ 3:0] debug_wb_rf_wen,
     output [ 4:0] debug_wb_rf_wnum,
     output [31:0] debug_wb_rf_wdata
 );
+
 reg         reset;
 always @(posedge clk) reset <= ~resetn; 
+
+assign inst_sram_wr = |inst_sram_wstrb;
+assign data_sram_wr = |data_sram_wstrb;
 
 wire         ds_allowin;
 wire         es_allowin;
@@ -71,11 +83,14 @@ if_stage if_stage(
     .fs_to_ds_valid (fs_to_ds_valid ),
     .fs_to_ds_bus   (fs_to_ds_bus   ),
     // inst sram interface
-    .inst_sram_en   (inst_sram_en   ),
-    .inst_sram_wen  (inst_sram_wen  ),
-    .inst_sram_addr (inst_sram_addr ),
-    .inst_sram_wdata(inst_sram_wdata),
-    .inst_sram_rdata(inst_sram_rdata),
+    .inst_sram_en   (inst_sram_req  ),      //lab10
+    .inst_sram_wen  (inst_sram_wstrb),      //lab10
+    .inst_sram_size (inst_sram_size ),      //lab10
+    .inst_sram_addr (inst_sram_addr ),      //lab10
+    .inst_sram_wdata(inst_sram_wdata),      //lab10
+    .inst_sram_rdata(inst_sram_rdata),      //lab10
+    .inst_sram_addr_ok(inst_sram_addr_ok),  //lab10
+    .inst_sram_data_ok(inst_sram_data_ok),  //lab10
     // from wb
     .ws_to_fs_bus   (ws_to_fs_bus   ),
     .ws_block       (ws_block       ),
@@ -128,10 +143,12 @@ exe_stage exe_stage(
     .es_to_ms_valid (es_to_ms_valid ),
     .es_to_ms_bus   (es_to_ms_bus   ),
     // data sram interface
-    .data_sram_en   (data_sram_en   ),
-    .data_sram_wen  (data_sram_wen  ),
-    .data_sram_addr (data_sram_addr ),
-    .data_sram_wdata(data_sram_wdata),
+    .data_sram_en   (data_sram_req   ),    //lab10
+    .data_sram_wen  (data_sram_wstrb ),    //lab10       
+    .data_sram_size (data_sram_size ),     //lab10
+    .data_sram_addr (data_sram_addr ),     //lab10 
+    .data_sram_wdata(data_sram_wdata),     //lab10 
+    .data_sram_addr_ok(data_sram_addr_ok), //lab10
     //to ds
     .es_to_ds_bus   (es_to_ds_bus   ),
     .es_ex_int      (es_ex_int      ),
@@ -155,6 +172,7 @@ mem_stage mem_stage(
     .ms_to_ws_bus   (ms_to_ws_bus   ),
     //from data-sram
     .data_sram_rdata(data_sram_rdata),
+    .data_sram_data_ok(data_sram_data_ok), //lab10
     //to ds
     .ms_to_ds_bus   (ms_to_ds_bus   ),
     .ms_ex_int      (ms_ex_int      ),
@@ -177,7 +195,7 @@ wb_stage wb_stage(
     //to rf: for write back
     .ws_to_rf_bus   (ws_to_rf_bus   ),
     .ws_ex          (wb_ex          ),
-    .ws_csr_we      (csr_we         ),
+    .ws_csr_gr      (csr_we         ),
     .ws_csr_num     (csr_wnum       ),
     .ws_csr_wdata   (csr_wvalue     ),
     .ws_csr_wmask   (csr_wmask      ),

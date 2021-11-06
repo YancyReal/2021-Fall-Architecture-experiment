@@ -14,6 +14,8 @@ module mem_stage(
     output [`MS_TO_WS_BUS_WD -1:0] ms_to_ws_bus  ,
     //from data-sram
     input  [31                 :0] data_sram_rdata,
+    input                          data_sram_data_ok,
+
     output [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus   ,
     output                         ms_ex_int      ,
     // to fs
@@ -22,6 +24,7 @@ module mem_stage(
 
 reg         ms_valid;
 wire        ms_ready_go;
+wire        ms_cancel;
 
 wire ms_ld_w ;
 wire ms_ld_b ;
@@ -35,6 +38,7 @@ wire [7:0] Byte1;
 
 reg [`ES_TO_MS_BUS_WD -1:0] es_to_ms_bus_r;
 wire        ms_res_from_mem;
+wire        ms_mem_we;
 wire        ms_gr_we;
 // wire        ms_pc_exce;
 wire        ms_csr_we;
@@ -54,20 +58,21 @@ wire [31:0] ms_pc;
 wire        ms_rdcntid;
 
 assign {
-        ms_rdcntid     ,//162:162
-        ms_has_int     ,//161:161
-        ms_ine_exce    ,//160:160
-        ms_mem_exce    ,//159:159
-        ms_brk_exce    ,//158:158
-        ms_pc_exce     ,//157:157
-        ms_csr_ertn    ,//156:156
-        ms_sys_exce    ,//155:155
-        ms_csr_num     ,//154:141 
-        ms_csr_we      ,//140:140
-        ms_csr_wdata   ,//139:108
-        ms_csr_wmask   ,//107:76
-        ms_ld_inst     ,//75:71 
-        ms_res_from_mem,//70:70 
+        ms_rdcntid     ,//162:162 +1
+        ms_has_int     ,//161:161 +1
+        ms_ine_exce    ,//160:160 +1
+        ms_mem_exce    ,//159:159 +1
+        ms_brk_exce    ,//158:158 +1
+        ms_pc_exce     ,//157:157 +1
+        ms_csr_ertn    ,//156:156 +1
+        ms_sys_exce    ,//155:155 +1
+        ms_csr_num     ,//154:141 +1
+        ms_csr_we      ,//140:140 +1
+        ms_csr_wdata   ,//139:108 +1
+        ms_csr_wmask   ,//107:76 +1
+        ms_ld_inst     ,//75:71 +1
+        ms_res_from_mem,//70:70 +1
+        ms_mem_we      ,//70:70 
         ms_gr_we       ,//69:69 
         ms_dest        ,//68:64 
         ms_alu_result  ,//63:32 
@@ -111,7 +116,8 @@ assign ms_csr_gr = ms_csr_we & ms_valid;
 assign ms_ex_int = (ms_sys_exce | ms_csr_ertn | ms_mem_exce | ms_brk_exce | ms_pc_exce | ms_ine_exce) && ms_valid;
 
 assign ms_to_ds_bus = {
-                       ms_rdcntid && ms_valid ,    //53:53
+                       ms_res_from_mem && ms_valid, //54:54
+                       ms_rdcntid && ms_valid     , //53:53
                        ms_csr_gr   ,    //52:52
                        ms_csr_num  ,    //51:38 
                        ms_ds_we    ,    //37:37
@@ -119,11 +125,12 @@ assign ms_to_ds_bus = {
                        ms_final_result  //31:0
                       };
                       
-assign ms_ready_go    = 1'b1;
+assign ms_cancel      = ws_block;
+assign ms_ready_go    = !((ms_mem_we || ms_res_from_mem) && !data_sram_data_ok && !ms_mem_exce);
 assign ms_allowin     = !ms_valid || ms_ready_go && ws_allowin;
-assign ms_to_ws_valid = ms_valid && ms_ready_go && !ws_block;
+assign ms_to_ws_valid = ms_valid && ms_ready_go;
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset || ms_cancel) begin
         ms_valid <= 1'b0;
     end
     else if (ms_allowin) begin
@@ -135,7 +142,7 @@ always @(posedge clk) begin
     end
 end
 
-assign ms_ds_we   = ms_valid && ms_gr_we;
+assign ms_ds_we   = ms_to_ws_valid && ms_gr_we;
 assign ms_ds_dest = ms_dest;
 
 assign Vaddr[0] = ms_alu_result[1:0] == 2'b00 ;

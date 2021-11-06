@@ -15,7 +15,7 @@ module wb_stage(
     output [`WS_TO_RF_BUS_WD -1:0]  ws_to_rf_bus  ,
     // to csr rf
     output                          ws_ex            ,
-    output                          ws_csr_we        ,
+    output                          ws_csr_gr        ,
     output [13:0]                   ws_csr_num       ,
     output [31:0]                   ws_csr_wdata     ,
     output [31:0]                   ws_csr_wmask     ,
@@ -33,6 +33,7 @@ module wb_stage(
 
 reg         ws_valid;
 wire        ws_ready_go;
+wire        ws_cancel;
 
 reg [`MS_TO_WS_BUS_WD -1:0] ms_to_ws_bus_r;
 wire [31:0] ws_error_vaddr;
@@ -47,6 +48,7 @@ wire [31:0] ws_final_result;
 wire [31:0] ws_pc;
 wire        ws_ertn;
 wire        ws_rdcntid;
+wire        ws_csr_we;
 
 assign {
         ws_rdcntid     ,  //188:188
@@ -93,7 +95,6 @@ assign ws_csr_esubcode = ws_pc_exce  ? `ESUBCODE_ADEF :
 wire        rf_we;
 wire [4 :0] rf_waddr;
 wire [31:0] rf_wdata;
-wire        ws_csr_gr;
 assign ws_csr_gr = ws_csr_we & ws_valid;
 assign ws_to_rf_bus = {
                        ws_rdcntid && ws_valid ,   //53:53
@@ -104,11 +105,11 @@ assign ws_to_rf_bus = {
                        rf_wdata        //31:0
                       };
 
-
+assign ws_cancel   = ws_block;
 assign ws_ready_go = 1'b1;
 assign ws_allowin  = !ws_valid || ws_ready_go;
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset || ws_cancel) begin
         ws_valid <= 1'b0;
     end
     else if (ws_allowin) begin

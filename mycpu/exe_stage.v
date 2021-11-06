@@ -13,6 +13,8 @@ module exe_stage(
     output                         es_to_ms_valid,
     output [`ES_TO_MS_BUS_WD -1:0] es_to_ms_bus  ,
     // data sram interface
+    input           data_sram_addr_ok,   //lab10
+    output [ 1:0]   data_sram_size ,     //lab10
     output          data_sram_en   ,
     output [ 3:0]   data_sram_wen  ,
     output [31:0]   data_sram_addr ,
@@ -31,6 +33,8 @@ module exe_stage(
 
 reg         es_valid      ;
 wire        es_ready_go   ;
+wire        es_cancel;
+wire        es_req;
 
 reg  [63:0] stable_couter;
 wire [31:0] es_clk_data;
@@ -79,7 +83,6 @@ wire        es_div_unsign ;
 wire        es_src1_is_pc ;
 wire        es_src2_is_imm; 
 wire        es_gr_we      ;
-wire        es_mem_we     ;
 wire [ 4:0] es_dest       ;
 wire [31:0] es_imm        ;
 wire [31:0] es_rj_value   ;
@@ -88,7 +91,6 @@ wire [31:0] es_pc         ;
 
 
 wire        es_res_from_mem;
-wire        es_ld_op;
 wire [4:0]  es_ld_inst;
 
 wire es_ld_b;
@@ -98,7 +100,8 @@ wire es_ld_w;
 wire es_st_b;
 wire es_st_h;
 wire es_st_w;
-wire [2: 0] es_st_inst;                                                            
+wire [2: 0] es_st_inst; 
+wire        es_mem_we;                                                           
 wire [3: 0] es_store_strb;
 wire [31:0] es_store_data;
 assign {
@@ -121,7 +124,7 @@ assign {
         es_ld_inst     ,  //161:157
         es_div_op      ,  //156:153
         es_alu_op      ,  //152:138
-        es_ld_op       ,  //137:137
+        es_res_from_mem       ,  //137:137
         es_src1_is_pc  ,  //136:136
         es_src2_is_imm ,  //135:135
         es_gr_we       ,  //134:134
@@ -149,33 +152,33 @@ assign es_to_ds_bus = {
                        es_ds_we               ,     //38:38         
                        es_ds_dest             ,     //37:33
                        es_result              ,     //32:1
-                       es_ld_op && es_valid         //0 :0
+                       es_res_from_mem && es_valid         //0 :0
                       };
 
-assign es_res_from_mem = es_ld_op;
 assign es_to_ms_bus = {
-                       es_rdcntid     ,  //162:162
-                       es_has_int     ,  //161:161
-                       es_ine_exce    ,  //160:160
-                       es_mem_exce    ,  //159:159
-                       es_brk_exce    ,  //158:158
-                       es_pc_exce     ,  //157:157
-                       es_csr_ertn    ,  //156:156
-                       es_sys_exce    ,  //155:155
-                       es_csr_num     ,  //154:141
-                       es_csr_we      ,  //140:140
-                       es_csr_wdata   ,  //139:108
-                       es_csr_wmask   ,  //107:76
-                       es_ld_inst     ,  //75:71
-                       es_res_from_mem,  //70:70
+                       es_rdcntid     ,  //162:162 +1
+                       es_has_int     ,  //161:161 +1
+                       es_ine_exce    ,  //160:160 +1
+                       es_mem_exce    ,  //159:159 +1
+                       es_brk_exce    ,  //158:158 +1
+                       es_pc_exce     ,  //157:157 +1
+                       es_csr_ertn    ,  //156:156 +1
+                       es_sys_exce    ,  //155:155 +1
+                       es_csr_num     ,  //154:141 +1
+                       es_csr_we      ,  //140:140 +1
+                       es_csr_wdata   ,  //139:108 +1
+                       es_csr_wmask   ,  //107:76 +1
+                       es_ld_inst     ,  //75:71 +1
+                       es_res_from_mem,  //70:70 +1
+                       es_mem_we      ,  //70:70
                        es_gr_we       ,  //69:69
                        es_dest        ,  //68:64
                        es_result      ,  //63:32
                        es_pc             //31:0
                       };
 assign es_ex_int = (es_sys_exce | es_csr_ertn | es_mem_exce | es_brk_exce | es_pc_exce | es_ine_exce | es_has_int) & es_valid;
-//div var declaration part
 
+//div var declaration part
 wire div_block;
 wire div_finished_signed;
 wire div_finished_unsigned;
@@ -201,11 +204,16 @@ wire [63: 0] div_unsigned_res;
 wire [31: 0]div_result;
 wire [31: 0]mod_result;
 
-assign es_ready_go    = !div_block;
+// 这里只有在下一级可以进入时才能发出请求
+assign es_req = ms_allowin && (es_res_from_mem || es_mem_we) && es_valid && !ms_ex_int && !es_mem_exce && !es_cancel;
+
+assign es_cancel      = ws_block;
+assign es_ready_go    = ((es_res_from_mem || es_mem_we) ? ((!es_mem_exce) ? (es_req && data_sram_addr_ok) : 1'b1)
+                                                         : 1'b1) && !div_block;
 assign es_allowin     = !es_valid || es_ready_go && ms_allowin;
-assign es_to_ms_valid =  es_valid && es_ready_go && !ws_block;
+assign es_to_ms_valid =  es_valid && es_ready_go;
 always @(posedge clk) begin
-    if (reset) begin     
+    if (reset || es_cancel) begin     
         es_valid <= 1'b0;
     end
     else if (es_allowin) begin 
@@ -364,10 +372,11 @@ assign load_exce   = (es_ld_w && ~(es_alu_result[1:0] == 2'b00)) || (es_ld_h && 
 assign store_exce  = (es_st_w && ~(es_alu_result[1:0] == 2'b00)) || (es_st_h && es_alu_result[0]);
 assign es_mem_exce = load_exce | store_exce;
 
-assign data_sram_en    = (es_res_from_mem || es_mem_we) && es_valid;
-//lab8 中断发生时要回弹流水线阻止在流水线上的ST指令写内存
-assign data_sram_wen   = (es_mem_we && es_valid && !ms_ex_int && !ws_ex_int && !es_mem_exce) ? es_store_strb : 4'h0;
-assign data_sram_addr  = {es_alu_result[31:2], 2'b0};
+assign data_sram_en    = es_req;
+assign data_sram_wen   = (es_mem_we && es_valid) ? es_store_strb : 4'h0;
+assign data_sram_addr  = es_alu_result;
 assign data_sram_wdata = es_store_data;
+assign data_sram_size  = (es_ld_w || es_st_w) ? 2'd2 :
+                         (es_ld_h || es_st_h) ? 2'b1 : 2'b0;
 
 endmodule
