@@ -184,8 +184,8 @@ wire div_finished_signed;
 wire div_finished_unsigned;
 reg  div_state_signed;
 reg  div_state_unsigned;
-wire div_hand_succeeded_signed;
-wire div_hand_succeeded_unsigned;
+wire div_shaked_sign;
+wire div_shaked_unsign;
 //input of div device
 reg  divisor_tvalid_signed;
 reg  dividend_tvalid_signed;
@@ -250,7 +250,7 @@ always @(posedge clk) begin
         divisor_tvalid_signed  <= 1'b0;
         dividend_tvalid_signed <= 1'b0;
     end
-    else if(div_hand_succeeded_signed) begin
+    else if(div_shaked_sign) begin
         divisor_tvalid_signed  <= 1'b0;
         dividend_tvalid_signed <= 1'b0;
     end
@@ -267,7 +267,7 @@ always @(posedge clk) begin
     else if(div_finished_signed) begin
         div_state_signed       <= 1'b0;
     end
-    else if(div_hand_succeeded_signed) begin
+    else if(div_shaked_sign) begin
         div_state_signed       <= 1'b1;
     end
 end
@@ -277,7 +277,7 @@ always @(posedge clk) begin
         divisor_tvalid_unsigned  <= 1'b0;
         dividend_tvalid_unsigned <= 1'b0;
     end
-    else if(div_hand_succeeded_unsigned) begin
+    else if(div_shaked_unsign) begin
         divisor_tvalid_unsigned  <= 1'b0;
         dividend_tvalid_unsigned <= 1'b0;
     end
@@ -294,14 +294,14 @@ always @(posedge clk) begin
     else if(div_finished_unsigned) begin
         div_state_unsigned       <= 1'b0;
     end 
-    else if(div_hand_succeeded_unsigned) begin
+    else if(div_shaked_unsign) begin
         div_state_unsigned       <= 1'b1;
     end
 end
 
 
-assign div_hand_succeeded_signed   = (divisor_tready_signed   & divisor_tvalid_signed   & dividend_tready_signed   & dividend_tvalid_signed);
-assign div_hand_succeeded_unsigned = (divisor_tready_unsigned & divisor_tvalid_unsigned & dividend_tready_unsigned & dividend_tvalid_unsigned);
+assign div_shaked_sign   = (divisor_tready_signed   & divisor_tvalid_signed   & dividend_tready_signed   & dividend_tvalid_signed);
+assign div_shaked_unsign = (divisor_tready_unsigned & divisor_tvalid_unsigned & dividend_tready_unsigned & dividend_tvalid_unsigned);
 
                             
 assign div_finished_signed   = div_tvalid_signed   & es_div_sign;

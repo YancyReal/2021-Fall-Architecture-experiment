@@ -1,27 +1,48 @@
 `include "mycpu.h"
 module mycpu_top(
-    input         clk,
-    input         resetn,
+    input         aclk,
+    input         aresetn,
     // inst sram interface
-    output        inst_sram_req,     //lab10
-    output        inst_sram_wr,      //lab10
-    output [ 1:0] inst_sram_size,    //lab10
-    output [31:0] inst_sram_addr,    //lab10
-    output [ 3:0] inst_sram_wstrb,   //lab10
-    output [31:0] inst_sram_wdata,   //lab10
-    input  [31:0] inst_sram_rdata,   //lab10
-    input         inst_sram_addr_ok, //lan10
-    input         inst_sram_data_ok, //lab10
-    // data sram interface
-    output        data_sram_req,     //lab10
-    output        data_sram_wr,      //lab10
-    output [ 1:0] data_sram_size,    //lab10
-    output [31:0] data_sram_addr,    //lab10
-    output [ 3:0] data_sram_wstrb,   //lab10
-    output [31:0] data_sram_wdata,   //lab10
-    input  [31:0] data_sram_rdata,   //lab10
-    input         data_sram_addr_ok, //lan10
-    input         data_sram_data_ok, //lab10
+    output     [ 3:0] 	arid,
+    output     [31:0]	araddr,
+    output     [ 7:0] 	arlen,
+    output     [ 2:0] 	arsize,
+    output     [ 1:0]	arburst,
+    output     [ 1:0]	arlock,
+    output     [ 3:0]	arcache,
+    output     [ 2:0]	arprot,
+    output     		    arvalid,
+    input      		    arready,
+    // read response interface
+    input [ 3:0] 	rid,
+    input [31:0]	rdata,
+    input [ 1:0]    rresp,
+    input		    rlast,
+    input 		    rvalid,
+    output 		    rready,
+    // write req interface
+    output     [ 3:0]	awid,
+    output     [31:0]	awaddr,
+    output     [ 7:0] 	awlen,
+    output     [ 2:0]	awsize,
+    output     [ 1:0]	awburst,
+    output     [ 1:0]	awlock,
+    output     [ 3:0]	awcache,
+    output     [ 2:0] 	awprot,
+    output    		    awvalid,
+    input 		        awready,
+    // write data interface
+    output     [ 3:0]	wid,
+    output     [31:0]	wdata,
+    output     [ 3:0]	wstrb,
+    output 		        wlast,
+    output    		    wvalid,
+    input		        wready,
+    // write response interface
+    input      [ 3:0]   bid,
+    input      [ 1:0]   bresp,
+    input 		        bvalid,
+    output		        bready,
     // trace debug interface
     output [31:0] debug_wb_pc,
     output [ 3:0] debug_wb_rf_wen,
@@ -29,11 +50,14 @@ module mycpu_top(
     output [31:0] debug_wb_rf_wdata
 );
 
+wire clk;
+assign resetn = aresetn;
+assign clk = aclk;
+assign resetn = aresetn;
 reg         reset;
 always @(posedge clk) reset <= ~resetn; 
 
-assign inst_sram_wr = |inst_sram_wstrb;
-assign data_sram_wr = |data_sram_wstrb;
+
 
 wire         ds_allowin;
 wire         es_allowin;
@@ -70,6 +94,95 @@ wire [8:0]  wb_esubcode;
 wire [1:0] ws_to_fs_bus;
 wire ws_block;
 wire [31:0] tid_rvalue;
+wire        inst_sram_req;
+wire        inst_sram_wr;    
+wire [ 1:0] inst_sram_size;   
+wire [31:0] inst_sram_addr;    
+wire [ 3:0] inst_sram_wstrb;   
+wire [31:0] inst_sram_wdata;   
+wire [31:0] inst_sram_rdata;   
+wire        inst_sram_addr_ok; 
+wire        inst_sram_data_ok; 
+// data sram interface
+wire        data_sram_req;     
+wire        data_sram_wr;      
+wire [ 1:0] data_sram_size;    
+wire [31:0] data_sram_addr;    
+wire [ 3:0] data_sram_wstrb;   
+wire [31:0] data_sram_wdata;   
+wire [31:0] data_sram_rdata;   
+wire        data_sram_addr_ok; 
+wire        data_sram_data_ok; 
+
+assign inst_sram_wr = |inst_sram_wstrb;
+assign data_sram_wr = |data_sram_wstrb;
+
+axi u_axi(
+    .aclk(clk),
+    .aresetn(resetn),
+    // inst sram interface: slave
+    .inst_sram_req(inst_sram_req),     
+    .inst_sram_wr(inst_sram_wr),      
+    .inst_sram_size(inst_sram_size),    
+    .inst_sram_addr(inst_sram_addr),    
+    .inst_sram_wstrb(inst_sram_wstrb),   
+    .inst_sram_wdata(inst_sram_wdata),   
+    .inst_sram_rdata(inst_sram_rdata),   
+    .inst_sram_addr_ok(inst_sram_addr_ok), 
+    .inst_sram_data_ok(inst_sram_data_ok), 
+    // data sram interface: slave
+    .data_sram_addr(data_sram_addr),
+    .data_sram_wdata(data_sram_wdata),
+    .data_sram_rdata(data_sram_rdata),
+    .data_sram_req(data_sram_req),     
+    .data_sram_wr(data_sram_wr),      
+    .data_sram_size(data_sram_size),    
+    .data_sram_wstrb(data_sram_wstrb),   
+    .data_sram_addr_ok(data_sram_addr_ok), 
+    .data_sram_data_ok(data_sram_data_ok), 
+    // axi interface:master
+    // read req interface
+    .arid(arid),
+    .araddr(araddr),
+    .arlen(arlen),
+    .arsize(arsize),
+    .arburst(arburst),
+    .arlock(arlock),
+    .arcache(arcache),
+    .arprot(arprot),
+    .arvalid(arvalid),
+    .arready(arready),
+    // read response interface
+    .rid(rid),
+    .rdata(rdata),
+    .rresp(rresp),
+    .rlast(rlast),
+    .rvalid(rvalid),
+    .rready(rready),
+    // write req interface
+    .awid(awid),
+    .awaddr(awaddr),
+    .awlen(awlen),
+    .awsize(awsize),
+    .awburst(awburst),
+    .awlock(awlock),
+    .awcache(awcache),
+    .awprot(awprot),
+    .awvalid(awvalid),
+    .awready(awready),
+    // write data interface
+    .wid(wid),
+    .wdata(wdata),
+    .wstrb(wstrb),
+    .wlast(wlast),
+    .wvalid(wvalid),
+    .wready(wready),
+    // write response interface
+    .bid(bid),
+    .bresp(bresp),
+    .bvalid(bvalid),
+    .bready(bready)
+);
 
 // IF stage
 if_stage if_stage(
