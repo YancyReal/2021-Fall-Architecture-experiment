@@ -76,6 +76,9 @@ wire [`BR_BUS_WD       -1:0] br_bus;
 //feedback bus
 wire [`ES_TO_DS_BUS_WD -1:0] es_to_ds_bus;
 wire [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus;
+wire [`MS_TO_ES_BUS_WD -1:0] ms_to_es_bus;
+wire [`WS_TO_FS_BUS_WD -1:0] ws_to_fs_bus;
+
 wire csr_re;
 wire [13:0] csr_rnum;
 wire [31:0] csr_rvalue;
@@ -91,7 +94,7 @@ wire wb_ex;
 wire [31:0] wb_vaddr;
 wire [5:0]  wb_ecode;
 wire [8:0]  wb_esubcode;
-wire [1:0] ws_to_fs_bus;
+
 wire ws_block;
 wire [31:0] tid_rvalue;
 wire        inst_sram_req;
@@ -114,8 +117,88 @@ wire [31:0] data_sram_rdata;
 wire        data_sram_addr_ok; 
 wire        data_sram_data_ok; 
 
+
+//TLB 
+//search port 0(for fetch)
+wire [18:0] s0_vppn;
+wire        s0_va_bit12;
+wire [9:0]  s0_asid;
+wire        s0_found;
+wire [3:0] s0_index;
+wire [19:0] s0_ppn;
+wire [5:0]  s0_ps;
+wire [1:0]  s0_plv;
+wire [1:0]  s0_mat;
+wire        s0_d;
+wire        s0_v;
+//search port 1(for load/store)
+wire [18:0] s1_vppn;
+wire        s1_va_bit12;
+wire [9:0]  s1_asid;
+wire        s1_found;
+wire [3:0] s1_index;
+wire [19:0] s1_ppn;
+wire [5:0]  s1_ps;
+wire [1:0]  s1_plv;
+wire [1:0]  s1_mat;
+wire        s1_d;
+wire        s1_v;
+//invtlb opcode
+wire [4:0]  invtlb_op;
+wire        invtlb_valid;
+//write port
+wire        we;
+wire [3:0] w_index;
+wire        w_e;
+wire [18:0] w_vppn;
+wire [5:0]  w_ps;
+wire [9:0]  w_asid;
+wire        w_g;
+wire [19:0] w_ppn0;
+wire [1:0]  w_plv0;
+wire [1:0]  w_mat0;
+wire        w_d0;
+wire        w_v0;
+wire [19:0] w_ppn1;
+wire [1:0]  w_plv1;
+wire [1:0]  w_mat1;
+wire        w_d1;
+wire        w_v1;
+//read port
+wire [3:0] r_index;
+wire        r_e;
+wire [18:0] r_vppn;
+wire [5:0]  r_ps;
+wire [9:0]  r_asid;
+wire        r_g;
+wire [19:0] r_ppn0;
+wire [1:0]  r_plv0;
+wire [1:0]  r_mat0;
+wire        r_d0;
+wire        r_v0;
+wire [19:0] r_ppn1;
+wire [1:0]  r_plv1;
+wire [1:0]  r_mat1;
+wire        r_d1;
+wire        r_v1;
+
+wire [31:0]    asid;
+wire [31:0]    tlbehi;
+wire [31:0]    tlbidx;
+wire [31:0]    tlbelo0;
+wire [31:0]    tlbelo1;
+
+wire    ws_tlbrd;
+wire    ws_tlbwr;
+wire    ws_tlbfill;
+wire    es_tlbsrch;
+wire    es_invtlb;
+
 assign inst_sram_wr = |inst_sram_wstrb;
 assign data_sram_wr = |data_sram_wstrb;
+
+
+
 
 axi u_axi(
     .aclk(clk),
@@ -182,6 +265,78 @@ axi u_axi(
     .bresp(bresp),
     .bvalid(bvalid),
     .bready(bready)
+);
+
+
+//lab14
+`define TLBNUM  16
+
+
+//lab14tlb
+tlb tlb(
+    .clk        (clk),
+    // search port 0
+    .s0_vppn    (s0_vppn),
+    .s0_va_bit12(s0_va_bit12),  
+    .s0_asid    (s0_asid),
+    .s0_found   (s0_found),
+    .s0_index   (s0_index),
+    .s0_ppn     (s0_ppn),
+    .s0_ps      (s0_ps),
+    .s0_plv     (s0_plv),
+    .s0_mat     (s0_mat),
+    .s0_d       (s0_d),
+    .s0_v       (s0_v),
+    // search port 1
+    .s1_vppn    (s1_vppn),
+    .s1_va_bit12(s1_va_bit12),
+    .s1_asid    (s1_asid),
+    .s1_found   (s1_found),
+    .s1_index   (s1_index),
+    .s1_ppn     (s1_ppn),
+    .s1_ps      (s1_ps),
+    .s1_plv     (s1_plv),
+    .s1_mat     (s1_mat),
+    .s1_d       (s1_d),
+    .s1_v       (s1_v),
+    // invtlb opcode
+    .invtlb_valid(invtlb_valid),
+    .invtlb_op  (invtlb_op),
+    // write port
+    .we         (we), //w(rite) e(nable)
+    .w_index    (w_index),
+    .w_e        (w_e),
+    .w_vppn     (w_vppn),
+    .w_ps       (w_ps),
+    .w_asid     (w_asid),
+    .w_g        (w_g),
+    .w_ppn0     (w_ppn0),
+    .w_plv0     (w_plv0),
+    .w_mat0     (w_mat0),
+    .w_d0       (w_d0),
+    .w_v0       (w_v0),
+    .w_ppn1     (w_ppn1),
+    .w_plv1     (w_plv1),
+    .w_mat1     (w_mat1),
+    .w_d1       (w_d1),
+    .w_v1       (w_v1),
+    // read port
+    .r_index    (r_index),
+    .r_e        (r_e),
+    .r_vppn     (r_vppn),
+    .r_ps       (r_ps),
+    .r_asid     (r_asid),
+    .r_g        (r_g),
+    .r_ppn0     (r_ppn0),
+    .r_plv0     (r_plv0),
+    .r_mat0     (r_mat0),
+    .r_d0       (r_d0),
+    .r_v0       (r_v0),
+    .r_ppn1     (r_ppn1),
+    .r_plv1     (r_plv1),
+    .r_mat1     (r_mat1),
+    .r_d1       (r_d1),
+    .r_v1       (r_v1)
 );
 
 // IF stage
@@ -252,6 +407,8 @@ exe_stage exe_stage(
     //from ds
     .ds_to_es_valid (ds_to_es_valid ),
     .ds_to_es_bus   (ds_to_es_bus   ),
+    //form ms
+    .ms_to_es_bus(ms_to_es_bus),
     //to ms
     .es_to_ms_valid (es_to_ms_valid ),
     .es_to_ms_bus   (es_to_ms_bus   ),
@@ -268,7 +425,26 @@ exe_stage exe_stage(
     .ms_ex_int      (ms_ex_int      ),
     .ws_ex_int      (ws_block       ),
     //to fs
-    .ws_block       (ws_block       )
+    .ws_block       (ws_block       ),
+    //tlb
+    .tlbsrch(es_tlbsrch),
+    .invtlb_valid(invtlb_valid),
+    .invtlb_op(invtlb_op),
+    // search port 1
+    .s1_vppn        (s1_vppn),
+    .s1_va_bit12    (s1_va_bit12),
+    .s1_asid        (s1_asid),
+    // .s1_found       (s1_found),
+    // .s1_index       (s1_index),
+    // .s1_ppn         (s1_ppn),
+    // .s1_ps          (s1_ps),
+    // .s1_plv         (s1_plv),
+    // .s1_mat         (s1_mat),
+    // .s1_d           (s1_d),
+    // .s1_v           (s1_v)
+    // csr
+    .asid(asid),
+    .tlbehi(tlbehi)
 );
 // MEM stage
 mem_stage mem_stage(
@@ -280,6 +456,8 @@ mem_stage mem_stage(
     //from es
     .es_to_ms_valid (es_to_ms_valid ),
     .es_to_ms_bus   (es_to_ms_bus   ),
+    // to es
+    .ms_to_es_bus(ms_to_es_bus),
     //to ws
     .ms_to_ws_valid (ms_to_ws_valid ),
     .ms_to_ws_bus   (ms_to_ws_bus   ),
@@ -319,6 +497,36 @@ wb_stage wb_stage(
     .ws_vaddr       (wb_vaddr       ),
     .ws_tid_rvalue  (tid_rvalue     ),
 
+    .asid(asid),
+    .tlbehi(tlbehi),
+    .tlbidx(tlbidx),
+    .tlbelo0(tlbelo0),
+    .tlbelo1(tlbelo1),
+
+        // write port
+    .we         (we), //w(rite) e(nable)
+    .w_index    (w_index),
+    .w_e        (w_e),
+    .w_vppn     (w_vppn),
+    .w_ps       (w_ps),
+    .w_asid     (w_asid),
+    .w_g        (w_g),
+    .w_ppn0     (w_ppn0),
+    .w_plv0     (w_plv0),
+    .w_mat0     (w_mat0),
+    .w_d0       (w_d0),
+    .w_v0       (w_v0),
+    .w_ppn1     (w_ppn1),
+    .w_plv1     (w_plv1),
+    .w_mat1     (w_mat1),
+    .w_d1       (w_d1),
+    .w_v1       (w_v1),
+
+    .r_index(r_index),
+    .tlbfill(ws_tlbfill),
+    .tlbrd(ws_tlbrd),
+    .tlbwr(ws_tlbwr),
+
     //trace debug interface
     .debug_wb_pc      (debug_wb_pc      ),
     .debug_wb_rf_wen  (debug_wb_rf_wen  ),
@@ -346,7 +554,41 @@ csr u_csr(
     .wb_ecode     (wb_ecode   ),
     .wb_esubcode  (wb_esubcode),
     .wb_pc        (debug_wb_pc),
-    .tid_rvalue   (tid_rvalue)
+    .tid_rvalue   (tid_rvalue),
+
+
+    .ws_tlbrd(ws_tlbrd),
+    .ws_tlbwr(ws_tlbwr),
+    .ws_tlbfill(ws_tlbwr),
+    .es_tlbsrch(es_tlbsrch),
+    .es_invtlb(invtlb_valid),
+    // search
+    .s1_found(s1_found),
+    .s1_index(s1_index),
+    
+    // read port
+    .r_e        (r_e),
+    .r_vppn     (r_vppn),
+    .r_ps       (r_ps),
+    .r_asid     (r_asid),
+    .r_g        (r_g),
+    .r_ppn0     (r_ppn0),
+    .r_plv0     (r_plv0),
+    .r_mat0     (r_mat0),
+    .r_d0       (r_d0),
+    .r_v0       (r_v0),
+    .r_ppn1     (r_ppn1),
+    .r_plv1     (r_plv1),
+    .r_mat1     (r_mat1),
+    .r_d1       (r_d1),
+    .r_v1       (r_v1),
+
+    // search
+    .asid(asid),
+    .tlbehi(tlbehi),
+    .tlbidx(tlbidx),
+    .tlbelo0(tlbelo0),
+    .tlbelo1(tlbelo1)
 );
 
 endmodule

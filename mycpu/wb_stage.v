@@ -9,7 +9,7 @@ module wb_stage(
     input                           ms_to_ws_valid,
     input  [`MS_TO_WS_BUS_WD -1:0]  ms_to_ws_bus  ,
     // to fs
-    output [1               :0]     ws_to_fs_bus  ,
+    output [`WS_TO_FS_BUS_WD -1:0]  ws_to_fs_bus  ,
     output                          ws_block      ,
     //to rf: for write back
     output [`WS_TO_RF_BUS_WD -1:0]  ws_to_rf_bus  ,
@@ -24,6 +24,38 @@ module wb_stage(
     output [5:0]                    ws_csr_ecode     ,
     output [8:0]                    ws_csr_esubcode  ,
     input  [31:0]                   ws_tid_rvalue    ,
+
+    //lab14
+    input [31:0]         asid,
+    input [31:0]         tlbehi,
+    input [31:0]         tlbidx,
+    input [31:0]         tlbelo0,
+    input [31:0]         tlbelo1,
+    // write port
+    output we, //w(rite) e(nable)
+    output [$clog2(16)-1:0] w_index,
+    output w_e,
+    output [ 18:0] w_vppn,
+    output [ 5:0] w_ps,
+    output [ 9:0] w_asid,
+    output w_g,
+    output [ 19:0] w_ppn0,
+    output [ 1:0] w_plv0,
+    output [ 1:0] w_mat0,
+    output w_d0,
+    output w_v0,
+    output [ 19:0] w_ppn1,
+    output [ 1:0] w_plv1,
+    output [ 1:0] w_mat1,
+    output w_d1,
+    output w_v1,
+
+
+    output [3:0] r_index,
+    output tlbfill,
+    output tlbrd,
+    output tlbwr,
+     
     //trace debug interface
     output [31:0] debug_wb_pc     ,
     output [ 3:0] debug_wb_rf_wen ,
@@ -42,6 +74,7 @@ wire        ws_pc_exce;
 wire        ws_mem_exce;
 wire        ws_brk_exce;
 wire        ws_sys_exce;
+wire        ws_invtlb_op_exce;
 wire        ws_gr_we;
 wire [ 4:0] ws_dest;
 wire [31:0] ws_final_result;
@@ -49,45 +82,63 @@ wire [31:0] ws_pc;
 wire        ws_ertn;
 wire        ws_rdcntid;
 wire        ws_csr_we;
+wire        ws_tlbfill;
+wire        ws_tlbwr;
+wire        ws_tlbrd;
+wire        ws_refetch;
+wire        ws_invtlb;
+reg [3:0] tlbfill_random;
 
-assign {
-        ws_rdcntid     ,  //188:188
-        ws_has_int     ,  //187:187
-        ws_ine_exce    ,  //186:186
-        ws_mem_exce    ,  //185:185
-        ws_brk_exce    ,  //184:184
-        ws_error_vaddr ,  //183:152
-        ws_pc_exce     ,  //151:151
-        ws_ertn        ,  //150:150
-        ws_sys_exce    ,  //149:149
-        ws_csr_num     ,  //148:135
-        ws_csr_we      ,  //134:134
-        ws_csr_wdata   ,  //133:102
-        ws_csr_wmask   ,  //101:70
-        ws_gr_we       ,  //69:69
-        ws_dest        ,  //68:64
-        ws_final_result,  //63:32
-        ws_pc             //31:0
+assign {ws_invtlb_op_exce,  //193:193
+        ws_invtlb        ,  //192:192
+        ws_tlbfill       ,  //191:191
+        ws_tlbrd         ,  //190:190
+        ws_tlbwr         ,  //189:189
+        ws_rdcntid       ,  //188:188
+        ws_has_int       ,  //187:187
+        ws_ine_exce      ,  //186:186
+        ws_mem_exce      ,  //185:185
+        ws_brk_exce      ,  //184:184
+        ws_error_vaddr   ,  //183:152
+        ws_pc_exce       ,  //151:151
+        ws_ertn          ,  //150:150
+        ws_sys_exce      ,  //149:149
+        ws_csr_num       ,  //148:135
+        ws_csr_we        ,  //134:134
+        ws_csr_wdata     ,  //133:102
+        ws_csr_wmask     ,  //101:70
+        ws_gr_we         ,  //69:69
+        ws_dest          ,  //68:64
+        ws_final_result  ,  //63:32
+        ws_pc               //31:0
        } = ms_to_ws_bus_r;
 
 assign ws_to_fs_bus = {
+                       ws_pc,
+                       ws_refetch & ws_valid,
                        ws_ertn & ws_valid,
                        ws_ex
                       };
 
 assign ws_csr_eret_flush = ws_ertn && ws_valid;
-assign ws_ex = (ws_sys_exce || ws_pc_exce || ws_mem_exce || ws_brk_exce || ws_ine_exce || ws_has_int) && ws_valid;
+assign ws_ex = (ws_sys_exce || ws_pc_exce || ws_mem_exce || ws_brk_exce || ws_ine_exce || ws_invtlb_op_exce || ws_has_int) && ws_valid;
 assign ws_vaddr = ws_error_vaddr;
 assign ws_block = ws_ex | ws_csr_eret_flush;         //进入调用或者退出的清空信号
+assign ws_refetch = ws_tlbfill | ws_tlbrd | ws_tlbwr | ws_invtlb;
+
+assign tlbfill = ws_tlbfill && ws_valid;
+assign tlbwr = ws_tlbwr && ws_valid;
+assign tlbrd = ws_tlbrd && ws_valid;
 
 
 
-assign ws_csr_ecode   = ws_pc_exce  ? `ECODE_ADE :
-                        ws_mem_exce ? `ECODE_ALE :
-                        ws_sys_exce ? `ECODE_SYS :
-                        ws_brk_exce ? `ECODE_BRK :
-                        ws_ine_exce ? `ECODE_INE :
-                                        6'b0     ;
+assign ws_csr_ecode   = ws_pc_exce       ? `ECODE_ADE    :
+                        ws_mem_exce      ? `ECODE_ALE    :
+                        ws_sys_exce      ? `ECODE_SYS    :
+                        ws_brk_exce      ? `ECODE_BRK    :
+                        ws_ine_exce      ? `ECODE_INE    :
+                        ws_invtlb_op_exce? `ECODE_INVTLB :
+                                                6'b0     ;
                                     
 assign ws_csr_esubcode = ws_pc_exce  ? `ESUBCODE_ADEF :
                                      1'b0;
@@ -125,6 +176,35 @@ assign rf_we    = ws_gr_we && ws_valid && ~ws_ex;
 assign rf_waddr = ws_dest;
 assign rf_wdata = ws_rdcntid ? ws_tid_rvalue : ws_final_result;
 
+
+
+//lab14
+always@(posedge clk)begin
+    if(reset)
+        tlbfill_random <= 4'b0;
+    else 
+        tlbfill_random <= tlbfill_random + 1'b1;
+end
+
+assign we = ws_tlbwr | ws_tlbfill;
+assign w_index = ws_tlbwr? tlbidx[3:0] : tlbfill_random;
+assign w_e = ~tlbidx[31];
+assign w_vppn = tlbehi[31:13];
+assign w_ps = tlbidx[29:24];
+assign w_asid = asid[9:0];
+assign w_g = tlbelo0[6] & tlbelo1[6];
+assign w_ppn0 = tlbelo0[31:8];
+assign w_plv0 = tlbelo0[3:2];
+assign w_mat0 = tlbelo0[5:4];
+assign w_d0 = tlbelo0[1];
+assign w_v0 = tlbelo0[0];
+assign w_ppn1 = tlbelo1[31:8];
+assign w_plv1 = tlbelo1[3:2];
+assign w_mat1 = tlbelo1[5:4];
+assign w_d1 = tlbelo1[1];
+assign w_v1 = tlbelo1[0];
+
+assign r_index = tlbidx[3:0];
 // debug info generate
 assign debug_wb_pc       = ws_pc;
 assign debug_wb_rf_wen   = {4{rf_we}};

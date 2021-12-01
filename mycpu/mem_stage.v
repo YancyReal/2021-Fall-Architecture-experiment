@@ -17,6 +17,7 @@ module mem_stage(
     input                          data_sram_data_ok,
 
     output [`MS_TO_DS_BUS_WD -1:0] ms_to_ds_bus   ,
+    output [`MS_TO_ES_BUS_WD -1:0] ms_to_es_bus, 
     output                         ms_ex_int      ,
     // to fs
     input                          ws_block
@@ -47,6 +48,7 @@ wire [31:0] ms_csr_wdata;
 wire [31:0] ms_csr_wmask;
 wire        ms_has_int;
 wire        ms_csr_ertn;
+wire        ms_invtlb_op_exce;
 wire        ms_sys_exce;
 wire        ms_ine_exce;
 wire        ms_mem_exce;
@@ -57,26 +59,35 @@ wire [31:0] ms_alu_result;
 wire [31:0] ms_pc;
 wire        ms_rdcntid;
 
+wire ms_tlbfill;
+wire ms_tlbrd;
+wire ms_tlbwr;
+wire ms_invtlb;
 assign {
-        ms_rdcntid     ,//162:162 +1
-        ms_has_int     ,//161:161 +1
-        ms_ine_exce    ,//160:160 +1
-        ms_mem_exce    ,//159:159 +1
-        ms_brk_exce    ,//158:158 +1
-        ms_pc_exce     ,//157:157 +1
-        ms_csr_ertn    ,//156:156 +1
-        ms_sys_exce    ,//155:155 +1
-        ms_csr_num     ,//154:141 +1
-        ms_csr_we      ,//140:140 +1
-        ms_csr_wdata   ,//139:108 +1
-        ms_csr_wmask   ,//107:76 +1
-        ms_ld_inst     ,//75:71 +1
-        ms_res_from_mem,//70:70 +1
-        ms_mem_we      ,//70:70 
-        ms_gr_we       ,//69:69 
-        ms_dest        ,//68:64 
-        ms_alu_result  ,//63:32 
-        ms_pc           //31:0  
+        ms_invtlb_op_exce,//168:168
+        ms_invtlb        ,//167:167
+        ms_tlbfill       ,//166:166
+        ms_tlbrd         ,//165:165
+        ms_tlbwr         ,//164:164
+        ms_rdcntid       ,//162:162 +1
+        ms_has_int       ,//161:161 +1
+        ms_ine_exce      ,//160:160 +1
+        ms_mem_exce      ,//159:159 +1
+        ms_brk_exce      ,//158:158 +1
+        ms_pc_exce       ,//157:157 +1
+        ms_csr_ertn      ,//156:156 +1
+        ms_sys_exce      ,//155:155 +1
+        ms_csr_num       ,//154:141 +1
+        ms_csr_we        ,//140:140 +1
+        ms_csr_wdata     ,//139:108 +1
+        ms_csr_wmask     ,//107:76 +1
+        ms_ld_inst       ,//75:71 +1
+        ms_res_from_mem  ,//70:70 +1
+        ms_mem_we        ,//70:70 
+        ms_gr_we         ,//69:69 
+        ms_dest          ,//68:64 
+        ms_alu_result    ,//63:32 
+        ms_pc             //31:0  
         } = es_to_ms_bus_r;
 
 assign ms_ld_w  = ms_ld_inst[0];
@@ -89,23 +100,28 @@ wire [31:0] mem_result;
 wire [31:0] ms_final_result;
 
 assign ms_to_ws_bus = {
-                       ms_rdcntid     ,  //188:188
-                       ms_has_int     ,  //187:187
-                       ms_ine_exce    ,  //186:186
-                       ms_mem_exce    ,  //185:185
-                       ms_brk_exce    ,  //184:184
-                       ms_alu_result  ,  //183:152
-                       ms_pc_exce     ,  //151:151
-                       ms_csr_ertn    ,  //150:150
-                       ms_sys_exce    ,  //149:149
-                       ms_csr_num     ,  //148:135
-                       ms_csr_we      ,  //134:134
-                       ms_csr_wdata   ,  //133:102
-                       ms_csr_wmask   ,  //101:70
-                       ms_gr_we       ,  //69:69
-                       ms_dest        ,  //68:64
-                       ms_final_result,  //63:32
-                       ms_pc             //31:0
+                       ms_invtlb_op_exce,  //193:193
+                       ms_invtlb        ,  //192:192
+                       ms_tlbfill       ,  //191:191
+                       ms_tlbrd         ,  //190:190
+                       ms_tlbwr         ,  //189:189
+                       ms_rdcntid       ,  //188:188
+                       ms_has_int       ,  //187:187
+                       ms_ine_exce      ,  //186:186
+                       ms_mem_exce      ,  //185:185
+                       ms_brk_exce      ,  //184:184
+                       ms_alu_result    ,  //183:152
+                       ms_pc_exce       ,  //151:151
+                       ms_csr_ertn      ,  //150:150
+                       ms_sys_exce      ,  //149:149
+                       ms_csr_num       ,  //148:135
+                       ms_csr_we        ,  //134:134
+                       ms_csr_wdata     ,  //133:102
+                       ms_csr_wmask     ,  //101:70
+                       ms_gr_we         ,  //69:69
+                       ms_dest          ,  //68:64
+                       ms_final_result  ,  //63:32
+                       ms_pc               //31:0
                       };
 
 wire        ms_ds_we;
@@ -113,7 +129,7 @@ wire [ 4:0] ms_ds_dest;
 wire        ms_csr_gr;
 assign ms_csr_gr = ms_csr_we & ms_valid;
 
-assign ms_ex_int = (ms_sys_exce | ms_csr_ertn | ms_mem_exce | ms_brk_exce | ms_pc_exce | ms_ine_exce) && ms_valid;
+assign ms_ex_int = (ms_sys_exce | ms_csr_ertn | ms_mem_exce | ms_brk_exce | ms_pc_exce | ms_ine_exce | ms_invtlb_op_exce) && ms_valid;
 
 assign ms_to_ds_bus = {
                        ms_res_from_mem && ms_valid, //54:54
@@ -124,6 +140,11 @@ assign ms_to_ds_bus = {
                        ms_ds_dest  ,    //36:32
                        ms_final_result  //31:0
                       };
+assign ms_to_es_bus = {
+                        ms_tlbrd,       // 1
+                        ms_csr_num,     // 14
+                        ms_csr_gr       // 1
+};
                       
 assign ms_cancel      = ws_block;
 assign ms_ready_go    = !((ms_mem_we || ms_res_from_mem) && !data_sram_data_ok && !ms_mem_exce);

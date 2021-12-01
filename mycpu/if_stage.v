@@ -20,7 +20,7 @@ module if_stage(
     input         inst_sram_addr_ok,  //lan10
     input         inst_sram_data_ok,  //lab10
     // from wb
-    input  [1:0]  ws_to_fs_bus   ,
+    input  [`WS_TO_FS_BUS_WD - 1 :0]  ws_to_fs_bus,
     input         ws_block       ,
     // from csr
     input  [31:0] ex_entry       ,
@@ -38,20 +38,42 @@ wire        fs_ready_go;
 wire        fs_allowin;
 wire        fs_cancel;
 
+
 wire ws_ex;
 wire ws_ertn;
-assign {ws_ertn,   //2:2
-        ws_ex      //1:1
+//lab14
+wire [31:0] refetch_pc;
+wire        ws_refetch;
+
+
+assign {refetch_pc,  //34:3
+        ws_refetch,  //2:2
+        ws_ertn,     //1:1
+        ws_ex        //0:0
         } = ws_to_fs_bus;
         
+wire ds_refetch;
+reg refetch_block;
+// 当流水线上有重取标志时有效，用于阻塞pre_if级。
+always @(posedge clk) begin
+    if(reset) begin 
+        refetch_block <= 1'b0;
+    end
+    else if(ds_refetch)
+        refetch_block <= 1'b1;
+    else if(ws_refetch)
+        refetch_block <= 1'b0;
+end
+
 reg         ws_ex_hold;
 reg         ws_ertn_hold;
+reg         ws_refetch_hold;
 reg         br_cancel_hold;
-reg [31:0]  br_targete_hold;
+reg [31:0]  br_target_hold;
 wire        br_stall;
 wire        br_taken_cancel;
 wire [31:0] br_target;
-assign {br_stall, br_taken_cancel,br_target} = br_bus;
+assign {ds_refetch,br_stall, br_taken_cancel,br_target} = br_bus;
 
 reg not_cancel;
 always @(posedge clk) begin
@@ -67,16 +89,19 @@ end
 wire real_not_cancel;
 assign real_not_cancel = pre_fs_req && (br_taken_cancel || fs_cancel);
 
+//lab14
 always @(posedge clk) begin
     if(reset) begin 
         br_cancel_hold <= 1'b0;
         ws_ex_hold <= 1'b0;
         ws_ertn_hold <= 1'b0;
+        ws_refetch_hold <= 1'b0;
     end
     else if(pre_fs_ready_go && !not_cancel && !real_not_cancel) begin
         br_cancel_hold <= 1'b0;
         ws_ex_hold <= 1'b0;
         ws_ertn_hold <= 1'b0;
+        ws_refetch_hold <= 1'b0;
     end
     else begin 
         if(br_taken_cancel)
@@ -85,12 +110,14 @@ always @(posedge clk) begin
             ws_ex_hold <= 1'b1;
         if(ws_ertn)
             ws_ertn_hold <=1'b1;
+        if(ws_refetch)
+            ws_refetch_hold<=1'b1;
     end
 
     if(reset)
-        br_targete_hold <= 32'b0;
+        br_target_hold <= 32'b0;
     else if(br_taken_cancel)
-        br_targete_hold <= br_target;
+        br_target_hold <= br_target;
     
 end
 
@@ -112,7 +139,7 @@ reg fs_inst_buf_discard;
 
 // 最简单的实现：仅当 IF 级 allowin 为 1 时pre-IF 级才可以对外发出地址请求
 assign pre_fs_req      = fs_allowin && !br_stall;
-assign pre_fs_ready_go = pre_fs_req && inst_sram_addr_ok;
+assign pre_fs_ready_go = pre_fs_req && inst_sram_addr_ok && !(ds_refetch || refetch_block);
 assign to_fs_valid     =  pre_fs_ready_go;
 
 // pre-IF stage
@@ -121,8 +148,9 @@ wire [31:0] nextpc;
 assign seq_pc       = fs_pc + 3'h4;
 assign nextpc       =   (ws_ex | ws_ex_hold) ?  ex_entry :       
                                     (ws_ertn | ws_ertn_hold) ? ertn_entry :
-                                        (br_taken_cancel) ? br_target :
-                                            (br_cancel_hold) ? br_targete_hold :                      
+                                        (ws_refetch | ws_refetch_hold) ? refetch_pc+4 :  //lab14
+                                            (br_taken_cancel) ? br_target :
+                                                  (br_cancel_hold) ? br_target_hold :                      
                                         seq_pc;
 reg first;
 always @(posedge clk) begin
@@ -148,13 +176,13 @@ always @(posedge clk) begin
 end
 
 assign fs_cancel      = ws_block;
-assign fs_ready_go    = (inst_sram_data_ok || fs_inst_buf[32]) && !fs_inst_buf_discard;
+assign fs_ready_go    = (inst_sram_data_ok || fs_inst_buf[32]) && !fs_inst_buf_discard && !(ds_refetch || refetch_block);
 assign fs_allowin     = !fs_valid || fs_ready_go && ds_allowin;
 assign fs_to_ds_valid =  fs_valid && fs_ready_go;
 
 
 always @(posedge clk) begin
-    if (reset || fs_cancel || br_taken_cancel || not_cancel) begin
+    if (reset || fs_cancel || br_taken_cancel || not_cancel || ds_refetch || ws_refetch) begin
         fs_valid <= 1'b0;
     end
     else if (fs_allowin) begin
@@ -197,7 +225,7 @@ end
 always @(posedge clk) begin
     if(reset || inst_sram_data_ok)
         fs_inst_buf_discard <= 1'b0;
-    else if(pre_fs_req && (fs_cancel || br_taken_cancel)|| !fs_allowin && !fs_ready_go && (fs_cancel || br_taken_cancel))
+    else if(pre_fs_req && (fs_cancel || br_taken_cancel || ws_refetch)|| !fs_allowin && !fs_ready_go && (fs_cancel || br_taken_cancel))
         fs_inst_buf_discard <= 1'b1;
 end
 
