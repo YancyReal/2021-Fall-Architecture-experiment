@@ -24,8 +24,24 @@ module if_stage(
     input         ws_block       ,
     // from csr
     input  [31:0] ex_entry       ,
-    input  [31:0] ertn_entry
+    input  [31:0] ertn_entry     ,
+    input  [31:0] csr_crmd       ,
+    input  [31:0] csr_asid       ,
+    input  [31:0] csr_dmw0       ,
+    input  [31:0] csr_dmw1       ,
 
+    //s0 port
+    output [ 18:0]         s0_vppn      ,
+    output                 s0_va_bit12  ,
+    output [ 9:0]          s0_asid      ,
+    input                  s0_found     ,
+    input [$clog2(16)-1:0] s0_index     ,
+    input [ 19:0]          s0_ppn       ,
+    input [ 5:0]           s0_ps        ,
+    input [ 1:0]           s0_plv       ,
+    input [ 1:0]           s0_mat       ,
+    input                  s0_d         ,
+    input                  s0_v
 );
 // PRE_FS
 wire        pre_fs_req;
@@ -38,6 +54,10 @@ wire        fs_ready_go;
 wire        fs_allowin;
 wire        fs_cancel;
 
+// lab15
+wire [31:0] pa_nextpc;
+wire [5:0]  pre_fs_tlb_ex;
+reg [5:0]  fs_tlb_ex;
 
 wire ws_ex;
 wire ws_ertn;
@@ -54,6 +74,7 @@ assign {refetch_pc,  //34:3
         
 wire ds_refetch;
 reg refetch_block;
+
 // 当流水线上有重取标志时有效，用于阻塞pre_if级。
 always @(posedge clk) begin
     if(reset) begin 
@@ -121,11 +142,11 @@ always @(posedge clk) begin
     
 end
 
-
 wire        fs_pc_exce;              //取指异常信号
 wire [31:0] fs_inst;
 reg  [31:0] fs_pc;
 assign fs_to_ds_bus = {
+                       fs_tlb_ex,       //70:65
                        fs_pc_exce,      //64:64
                        fs_inst   ,      //63:32   
                        fs_pc            //31:0
@@ -145,6 +166,7 @@ assign to_fs_valid     =  pre_fs_ready_go;
 // pre-IF stage
 wire [31:0] seq_pc;
 wire [31:0] nextpc;
+reg [31:0] pre_fs_vaddr;
 assign seq_pc       = fs_pc + 3'h4;
 assign nextpc       =   (ws_ex | ws_ex_hold) ?  ex_entry :       
                                     (ws_ertn | ws_ertn_hold) ? ertn_entry :
@@ -169,10 +191,22 @@ always @(posedge clk) begin
         inst_sram_addr <= 32'h1c000000;
     end
     else if(pre_fs_req && !first)begin
-        inst_sram_addr <= nextpc;
+        inst_sram_addr <= pa_nextpc;
     end
     else 
         inst_sram_addr <= inst_sram_addr;
+end
+
+
+always @(posedge clk) begin
+    if(reset)begin
+        pre_fs_vaddr <= 32'h1c000000;
+    end
+    else if(pre_fs_req && !first)begin
+        pre_fs_vaddr <= nextpc;
+    end
+    else 
+        pre_fs_vaddr <= pre_fs_vaddr;
 end
 
 assign fs_cancel      = ws_block;
@@ -193,7 +227,7 @@ always @(posedge clk) begin
         fs_pc <= 32'h1bfffffc;  //trick: to make nextpc be 0x1c000000 during reset 
     end
     else if (to_fs_valid && fs_allowin) begin
-        fs_pc <= inst_sram_addr;
+        fs_pc <= pre_fs_vaddr;
     end
 end
 
@@ -205,8 +239,17 @@ assign inst_sram_size  = 2'b10;
 
 assign fs_inst         = (fs_inst_buf[32]) ? fs_inst_buf : inst_sram_rdata;
 
-assign fs_pc_exce = |fs_pc[1:0]; // pc[1:0] != 0 ADEE;
+wire       pre_fs_dmw_hit;
+reg        fs_dmw_hit;
+reg [31:0] fs_csr_crmd;
+assign fs_pc_exce = |fs_pc[1:0] || (fs_pc[31] && (fs_csr_crmd[1:0] == 2'd3) & ~fs_dmw_hit); // pc[1:0] != 0 ADEE;
 
+always @(posedge clk) begin
+    if(to_fs_valid && fs_allowin)begin
+        fs_dmw_hit <= pre_fs_dmw_hit;
+        fs_csr_crmd <= csr_crmd;
+    end   
+end
 
 // 用 fs_inst_buf 保存 IF 级取回的指令
 always @(posedge clk) begin
@@ -228,5 +271,43 @@ always @(posedge clk) begin
     else if(pre_fs_req && (fs_cancel || br_taken_cancel || ws_refetch)|| !fs_allowin && !fs_ready_go && (fs_cancel || br_taken_cancel))
         fs_inst_buf_discard <= 1'b1;
 end
+
+//lab15
+
+
+always @(posedge clk) begin
+    if (reset) begin
+        fs_tlb_ex <= 1'b0;
+    end else if (to_fs_valid && fs_allowin) begin
+        fs_tlb_ex <= pre_fs_tlb_ex;
+    end
+end
+
+// p15
+va2pa inst_va2pa(
+    .vaddr         (nextpc        ),
+    .v2p_inst      (1'b1          ),
+    .v2p_ld        (1'b0          ),
+    .v2p_st        (1'b0          ), 
+    .csr_crmd      (csr_crmd      ),
+    .csr_asid      (csr_asid      ),
+    .csr_dmw0      (csr_dmw0      ),
+    .csr_dmw1      (csr_dmw1      ),
+    .paddr         (pa_nextpc     ),
+    .tlb_ex        (pre_fs_tlb_ex ),
+    .s_vppn        (s0_vppn       ),
+    .s_va_bit12    (s0_va_bit12   ),
+    .s_asid        (s0_asid       ),
+    .s_found       (s0_found      ),
+    .s_index       (s0_index      ),
+    .s_ppn         (s0_ppn        ),
+    .s_ps          (s0_ps         ),
+    .s_plv         (s0_plv        ),
+    .s_mat         (s0_mat        ),
+    .s_d           (s0_d          ),
+    .s_v           (s0_v          ),
+    .dmw_hit       (pre_fs_dmw_hit)
+);
+
 
 endmodule

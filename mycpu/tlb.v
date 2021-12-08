@@ -187,6 +187,22 @@ assign s0_index = {4{match0[ 0]}} & 4'd0  |
                   {4{match0[13]}} & 4'd13 | 
                   {4{match0[14]}} & 4'd14 | 
                   {4{match0[15]}} & 4'd15 ;
+// assign s0_index = match0[ 0] ? 4'd0  : 
+//                   match0[ 1] ? 4'd1  : 
+//                   match0[ 2] ? 4'd2  : 
+//                   match0[ 3] ? 4'd3  : 
+//                   match0[ 4] ? 4'd4  : 
+//                   match0[ 5] ? 4'd5  : 
+//                   match0[ 6] ? 4'd6  : 
+//                   match0[ 7] ? 4'd7  : 
+//                   match0[ 8] ? 4'd8  : 
+//                   match0[ 9] ? 4'd9  : 
+//                   match0[10] ? 4'd10 : 
+//                   match0[11] ? 4'd11 : 
+//                   match0[12] ? 4'd12 : 
+//                   match0[13] ? 4'd13 : 
+//                   match0[14] ? 4'd14 : 
+//                   match0[15] ? 4'd15 : 4'd0;
 
 assign s0_ppn = (s0_choose_bit)? tlb_ppn1[s0_index] : tlb_ppn0[s0_index];
 assign s0_ps  = tlb_ps4MB [s0_index]? 6'd22 : 6'd12; 

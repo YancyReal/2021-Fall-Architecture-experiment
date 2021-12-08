@@ -31,23 +31,27 @@ module exe_stage(
     output                           es_cnt_op,
     input [31:0]                     es_cnt,
 
-    //lab14
+
+    //csr
     input [31:0]         asid,
     input [31:0]         tlbehi,
+    input [31:0]         csr_crmd,
+    input [31:0]         csr_dmw0,
+    input [31:0]         csr_dmw1,
 
     // search port 1 (for load/store)
     output tlbsrch,
     output [ 18:0] s1_vppn,
     output s1_va_bit12,
     output [ 9:0] s1_asid,
-    // input s1_found,
-    // input [$clog2(16)-1:0] s1_index,
-    // input [ 19:0] s1_ppn,
-    // input [ 5:0] s1_ps,
-    // input [ 1:0] s1_plv,
-    // input [ 1:0] s1_mat,
-    // input s1_d,
-    // input s1_v,
+    input s1_found,
+    input [$clog2(16)-1:0] s1_index,
+    input [ 19:0] s1_ppn,
+    input [ 5:0] s1_ps,
+    input [ 1:0] s1_plv,
+    input [ 1:0] s1_mat,
+    input s1_d,
+    input s1_v,
     output invtlb_valid,
     output [4:0] invtlb_op
 
@@ -82,6 +86,7 @@ wire [31:0]es_bad_pc;
 wire load_exce      ;
 wire store_exce     ;
 wire es_mem_exce    ;
+wire es_ade         ;
 wire es_invtlb_op_exce;
 wire [4:0] es_invtlb_op;
 wire es_tlbsrch;
@@ -134,13 +139,18 @@ wire        es_mem_we;
 wire [3: 0] es_store_strb;
 wire [31:0] es_store_data;
 
+wire [5:0] es_ds_tlb_ex;
+wire [5:0] es_tlb_ex;
+
 //lab14
-assign {es_invtlb_op    ,
-        es_tlbsrch      ,
-        es_tlbrd        ,
-        es_tlbwr        ,
-        es_tlbfill      ,
-        es_invtlb       ,
+assign {
+        es_ds_tlb_ex    ,  //301:296
+        es_invtlb_op    ,  //295:291
+        es_tlbsrch      ,  //290:290
+        es_tlbrd        ,  //289:289
+        es_tlbwr        ,  //288:288
+        es_tlbfill      ,  //287:287
+        es_invtlb       ,  //286:286
         es_rdcntid      ,  //285:285
         es_has_int      ,  //284:284
         es_rdcntvl_w    ,  //282:282
@@ -191,11 +201,14 @@ assign es_to_ds_bus = {
                        es_res_from_mem && es_valid         //0 :0
                       };
 
-assign es_to_ms_bus = {es_invtlb_op_exce,
-                       es_invtlb,
-                       es_tlbfill,
-                       es_tlbrd,
-                       es_tlbwr,
+assign es_to_ms_bus = {
+                       es_ade           ,  //175:175
+                       es_tlb_ex        ,  //174:169
+                       es_invtlb_op_exce,  //168:168
+                       es_invtlb        ,  //167:167
+                       es_tlbfill       ,  //166:166
+                       es_tlbrd         ,  //165:165
+                       es_tlbwr         ,  //164:164
                        es_rdcntid       ,  //162:162 +1
                        es_has_int       ,  //161:161 +1
                        es_ine_exce      ,  //160:160 +1
@@ -226,7 +239,7 @@ assign {
 
 wire tlbsrch_block = (ms_csr_gr && (ms_csr_num == `CSR_ASID|| ms_csr_num==`CSR_TLBEHI) ||
                      ms_tlbrd) && es_tlbsrch;
-assign es_ex_int = (es_sys_exce | es_csr_ertn | es_mem_exce | es_brk_exce | es_pc_exce | es_ine_exce | es_invtlb_op_exce | es_has_int) & es_valid;
+assign es_ex_int = (es_sys_exce | es_csr_ertn | es_mem_exce | es_ade | es_brk_exce | es_pc_exce | es_ine_exce | es_invtlb_op_exce | es_has_int | (|es_tlb_ex)) & es_valid;
 
 //div var declaration part
 wire div_block;
@@ -254,11 +267,14 @@ wire [63: 0] div_unsigned_res;
 wire [31: 0]div_result;
 wire [31: 0]mod_result;
 
+wire        es_dmw_hit;
+
+
 // 这里只有在下一级可以进入时才能发出请求
-assign es_req = ms_allowin && (es_res_from_mem || es_mem_we) && es_valid && !ms_ex_int && !es_mem_exce && !es_cancel;
+assign es_req = ms_allowin && (es_res_from_mem || es_mem_we) && es_valid && !ms_ex_int && !es_mem_exce && !es_ade && !(|es_tlb_ex) && !es_cancel;
 
 assign es_cancel      = ws_block;
-assign es_ready_go    = ((es_res_from_mem || es_mem_we) ? ((!es_mem_exce) ? (es_req && data_sram_addr_ok) : 1'b1)
+assign es_ready_go    = ((es_res_from_mem || es_mem_we) ? ((!es_mem_exce && !es_ade && !(|es_tlb_ex)) ? (es_req && data_sram_addr_ok) : 1'b1)
                                                          : 1'b1) && !div_block && !tlbsrch_block;
 assign es_allowin     = !es_valid || es_ready_go && ms_allowin;
 assign es_to_ms_valid =  es_valid && es_ready_go;
@@ -421,25 +437,59 @@ assign es_store_data = es_st_b ? {4{es_rkd_value[7: 0]}}:
 assign load_exce   = (es_ld_w && ~(es_alu_result[1:0] == 2'b00)) || (es_ld_h && es_alu_result[0]);
 assign store_exce  = (es_st_w && ~(es_alu_result[1:0] == 2'b00)) || (es_st_h && es_alu_result[0]);
 assign es_mem_exce = load_exce | store_exce;
+assign es_ade = (es_mem_we || es_res_from_mem) && es_alu_result[31] && (csr_crmd[1:0] == 2'd3) & ~es_dmw_hit;
 assign es_invtlb_op_exce = es_invtlb & ~(es_invtlb_op == 5'h0 || es_invtlb_op == 5'h1 || es_invtlb_op == 5'h2 
                                       || es_invtlb_op == 5'h3 || es_invtlb_op == 5'h4 || es_invtlb_op == 5'h5 
                                       || es_invtlb_op == 5'h6);
 
+//lab15
+wire [ 9:0] s1_asid_t;
+wire [ 18:0]s1_vppn_t;
+wire s1_va_bit12_t;
+
 //lab14
 assign invtlb_op = es_invtlb_op;
 assign invtlb_valid = es_invtlb && es_valid;
-assign s1_asid     = es_invtlb ? es_rj_value[9:0] : asid[9:0];
-assign s1_vppn     = es_invtlb ? es_rkd_value[31:13] : tlbehi[31:13];
-assign s1_va_bit12 = es_invtlb ? es_rkd_value[12] : 1'b0;
+assign s1_asid     = (es_res_from_mem || es_mem_we) ? s1_asid_t :  es_invtlb ? es_rj_value[9:0] : asid[9:0];
+assign s1_vppn     = (es_res_from_mem || es_mem_we) ? s1_vppn_t : es_invtlb ? es_rkd_value[31:13] : tlbehi[31:13];
+assign s1_va_bit12 = (es_res_from_mem || es_mem_we) ? s1_va_bit12_t : es_invtlb ? es_rkd_value[12] : 1'b0;
 assign tlbsrch = es_tlbsrch;
 assign invtlb = es_invtlb;
 
 
 assign data_sram_en    = es_req;
 assign data_sram_wen   = (es_mem_we && es_valid) ? es_store_strb : 4'h0;
-assign data_sram_addr  = es_alu_result;
+// assign data_sram_addr  = es_alu_result;
 assign data_sram_wdata = es_store_data;
 assign data_sram_size  = (es_ld_w || es_st_w) ? 2'd2 :
                          (es_ld_h || es_st_h) ? 2'b1 : 2'b0;
+
+// p15
+wire [5:0] es_tlb_ex_t;
+assign es_tlb_ex = es_tlb_ex_t | es_ds_tlb_ex;
+va2pa mem_va2pa(
+    .vaddr         (es_alu_result   ),
+    .v2p_inst      (1'b0            ),
+    .v2p_ld        (es_res_from_mem ),
+    .v2p_st        (es_mem_we       ),
+    .csr_crmd      (csr_crmd        ),
+    .csr_asid      (asid        ),
+    .csr_dmw0      (csr_dmw0        ),
+    .csr_dmw1      (csr_dmw1        ),
+    .paddr         (data_sram_addr  ),
+    .tlb_ex        (es_tlb_ex_t     ),
+    .s_vppn        (s1_vppn_t       ),
+    .s_va_bit12    (s1_va_bit12_t   ),
+    .s_asid        (s1_asid_t       ),
+    .s_found       (s1_found        ),
+    .s_index       (s1_index        ),
+    .s_ppn         (s1_ppn          ),
+    .s_ps          (s1_ps           ),
+    .s_plv         (s1_plv          ),
+    .s_mat         (s1_mat          ),
+    .s_d           (s1_d            ),
+    .s_v           (s1_v            ),
+    .dmw_hit       (es_dmw_hit      )
+);
 
 endmodule

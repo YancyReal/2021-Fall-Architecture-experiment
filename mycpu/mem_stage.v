@@ -63,7 +63,11 @@ wire ms_tlbfill;
 wire ms_tlbrd;
 wire ms_tlbwr;
 wire ms_invtlb;
+wire [5:0]ms_tlb_ex;
+wire ms_ade;
 assign {
+        ms_ade           ,//175:175
+        ms_tlb_ex        ,//174:169
         ms_invtlb_op_exce,//168:168
         ms_invtlb        ,//167:167
         ms_tlbfill       ,//166:166
@@ -98,8 +102,12 @@ assign ms_ld_hu = ms_ld_inst[4];
 
 wire [31:0] mem_result;
 wire [31:0] ms_final_result;
+wire ms_mem_inst;
 
 assign ms_to_ws_bus = {
+                       ms_ade           ,  //201:201
+                       ms_mem_inst      ,  //200:200
+                       ms_tlb_ex        ,  //199:194
                        ms_invtlb_op_exce,  //193:193
                        ms_invtlb        ,  //192:192
                        ms_tlbfill       ,  //191:191
@@ -129,7 +137,7 @@ wire [ 4:0] ms_ds_dest;
 wire        ms_csr_gr;
 assign ms_csr_gr = ms_csr_we & ms_valid;
 
-assign ms_ex_int = (ms_sys_exce | ms_csr_ertn | ms_mem_exce | ms_brk_exce | ms_pc_exce | ms_ine_exce | ms_invtlb_op_exce) && ms_valid;
+assign ms_ex_int = (ms_sys_exce | ms_csr_ertn | ms_mem_exce | ms_ade | ms_brk_exce | ms_pc_exce | ms_ine_exce | ms_invtlb_op_exce | (|ms_tlb_ex)) && ms_valid;
 
 assign ms_to_ds_bus = {
                        ms_res_from_mem && ms_valid, //54:54
@@ -140,14 +148,16 @@ assign ms_to_ds_bus = {
                        ms_ds_dest  ,    //36:32
                        ms_final_result  //31:0
                       };
-assign ms_to_es_bus = {
-                        ms_tlbrd,       // 1
-                        ms_csr_num,     // 14
-                        ms_csr_gr       // 1
-};
                       
+assign ms_to_es_bus = {
+                        ms_tlbrd,       // 16:16
+                        ms_csr_num,     // 15:2
+                        ms_csr_gr       // 1:1
+};
+
+assign ms_mem_inst = ms_mem_we || ms_res_from_mem;                     
 assign ms_cancel      = ws_block;
-assign ms_ready_go    = !((ms_mem_we || ms_res_from_mem) && !data_sram_data_ok && !ms_mem_exce);
+assign ms_ready_go    = !((ms_mem_we || ms_res_from_mem) && !data_sram_data_ok && !ms_mem_exce && !ms_ade && !(|ms_tlb_ex));
 assign ms_allowin     = !ms_valid || ms_ready_go && ws_allowin;
 assign ms_to_ws_valid = ms_valid && ms_ready_go;
 always @(posedge clk) begin

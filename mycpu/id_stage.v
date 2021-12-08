@@ -54,7 +54,9 @@ wire ds_refetch;
 wire [31:0] ds_inst     ;
 wire [31:0] ds_pc       ;
 wire        ds_pc_exce  ;
+wire [5:0] ds_tlb_ex;
 assign {  
+        ds_tlb_ex,     //70:65
         ds_pc_exce,    //64:64
         ds_inst   ,    //63:32 
         ds_pc          //31:0
@@ -244,7 +246,9 @@ wire        rj_less_urd;
 assign br_bus       = {ds_refetch && ds_valid,br_stall, br_taken_cancel, br_target};
 assign load_op = res_from_mem;
 assign invtlb_op = ds_inst[4:0];
-assign ds_to_es_bus = {invtlb_op     ,  //295:291
+assign ds_to_es_bus = {
+                       ds_tlb_ex     ,  //301:296
+                       invtlb_op     ,  //295:291
                        inst_tlbsrch  ,  //290:290
                        inst_tlbrd    ,  //289:289
                        inst_tlbwr    ,  //288:288
@@ -512,7 +516,7 @@ assign dst_is_r1     = inst_bl;
 assign gr_we         = ~inst_st_w & ~inst_st_b & ~inst_st_h & ~inst_beq & ~inst_bne & ~inst_blt & ~inst_bge & 
                        ~inst_bltu & ~inst_bgeu & ~inst_b & 
                        ~inst_tlbsrch & ~inst_tlbrd & ~inst_tlbwr & ~inst_tlbfill & ~inst_invtlb &
-                       ~inst_ertn & ~inst_syscall & ~ds_ine_exce;
+                       ~inst_ertn & ~inst_syscall & ~ds_ine_exce & ~(|ds_tlb_ex);
 assign mem_we        = inst_st_w | inst_st_b | inst_st_h;
 assign dest          = dst_is_r1    ? 5'd1 :
                        inst_rdcntid ? rj   : rd;

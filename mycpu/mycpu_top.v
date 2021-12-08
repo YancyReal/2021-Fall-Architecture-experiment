@@ -91,6 +91,7 @@ wire [31:0] ertn_entry;
 wire has_int;
 wire eret_flush;
 wire wb_ex;
+wire ws_mem_inst;
 wire [31:0] wb_vaddr;
 wire [5:0]  wb_ecode;
 wire [8:0]  wb_esubcode;
@@ -187,6 +188,9 @@ wire [31:0]    tlbehi;
 wire [31:0]    tlbidx;
 wire [31:0]    tlbelo0;
 wire [31:0]    tlbelo1;
+wire [31:0]    csr_crmd;
+wire [31:0]    csr_dmw0;
+wire [31:0]    csr_dmw1;
 
 wire    ws_tlbrd;
 wire    ws_tlbwr;
@@ -364,7 +368,24 @@ if_stage if_stage(
     .ws_block       (ws_block       ),
     // from csr
     .ex_entry       (ex_entry       ),
-    .ertn_entry     (ertn_entry     )
+    .ertn_entry     (ertn_entry     ),
+    .csr_crmd       (csr_crmd       ),
+    .csr_asid       (asid       ),
+    .csr_dmw0       (csr_dmw0       ),
+    .csr_dmw1       (csr_dmw1       ),
+
+    //s0 port
+    .s0_vppn        (s0_vppn        ),
+    .s0_va_bit12    (s0_va_bit12    ),
+    .s0_asid        (s0_asid        ),
+    .s0_found       (s0_found       ),
+    .s0_index       (s0_index       ),
+    .s0_ppn         (s0_ppn         ),
+    .s0_ps          (s0_ps          ),
+    .s0_plv         (s0_plv         ),
+    .s0_mat         (s0_mat         ),
+    .s0_d           (s0_d           ),
+    .s0_v           (s0_v           )
 );
 // ID stage
 id_stage id_stage(
@@ -408,16 +429,16 @@ exe_stage exe_stage(
     .ds_to_es_valid (ds_to_es_valid ),
     .ds_to_es_bus   (ds_to_es_bus   ),
     //form ms
-    .ms_to_es_bus(ms_to_es_bus),
+    .ms_to_es_bus   (ms_to_es_bus   ),
     //to ms
     .es_to_ms_valid (es_to_ms_valid ),
     .es_to_ms_bus   (es_to_ms_bus   ),
     // data sram interface
     .data_sram_en   (data_sram_req   ),    //lab10
     .data_sram_wen  (data_sram_wstrb ),    //lab10       
-    .data_sram_size (data_sram_size ),     //lab10
-    .data_sram_addr (data_sram_addr ),     //lab10 
-    .data_sram_wdata(data_sram_wdata),     //lab10 
+    .data_sram_size (data_sram_size  ),    //lab10
+    .data_sram_addr (data_sram_addr  ),    //lab10 
+    .data_sram_wdata(data_sram_wdata ),    //lab10 
     .data_sram_addr_ok(data_sram_addr_ok), //lab10
     //to ds
     .es_to_ds_bus   (es_to_ds_bus   ),
@@ -427,24 +448,27 @@ exe_stage exe_stage(
     //to fs
     .ws_block       (ws_block       ),
     //tlb
-    .tlbsrch(es_tlbsrch),
-    .invtlb_valid(invtlb_valid),
-    .invtlb_op(invtlb_op),
+    .tlbsrch        (es_tlbsrch     ),
+    .invtlb_valid   (invtlb_valid   ),
+    .invtlb_op      (invtlb_op      ),
     // search port 1
-    .s1_vppn        (s1_vppn),
-    .s1_va_bit12    (s1_va_bit12),
-    .s1_asid        (s1_asid),
-    // .s1_found       (s1_found),
-    // .s1_index       (s1_index),
-    // .s1_ppn         (s1_ppn),
-    // .s1_ps          (s1_ps),
-    // .s1_plv         (s1_plv),
-    // .s1_mat         (s1_mat),
-    // .s1_d           (s1_d),
-    // .s1_v           (s1_v)
+    .s1_vppn        (s1_vppn        ),
+    .s1_va_bit12    (s1_va_bit12    ),
+    .s1_asid        (s1_asid        ),
+    .s1_found       (s1_found       ),
+    .s1_index       (s1_index       ),
+    .s1_ppn         (s1_ppn         ),
+    .s1_ps          (s1_ps          ),
+    .s1_plv         (s1_plv         ),
+    .s1_mat         (s1_mat         ),
+    .s1_d           (s1_d           ),
+    .s1_v           (s1_v           ),
     // csr
-    .asid(asid),
-    .tlbehi(tlbehi)
+    .asid           (asid           ),
+    .tlbehi         (tlbehi         ),
+    .csr_crmd       (csr_crmd       ),
+    .csr_dmw0       (csr_dmw0       ),
+    .csr_dmw1       (csr_dmw1       )
 );
 // MEM stage
 mem_stage mem_stage(
@@ -457,12 +481,12 @@ mem_stage mem_stage(
     .es_to_ms_valid (es_to_ms_valid ),
     .es_to_ms_bus   (es_to_ms_bus   ),
     // to es
-    .ms_to_es_bus(ms_to_es_bus),
+    .ms_to_es_bus   (ms_to_es_bus   ),
     //to ws
     .ms_to_ws_valid (ms_to_ws_valid ),
     .ms_to_ws_bus   (ms_to_ws_bus   ),
     //from data-sram
-    .data_sram_rdata(data_sram_rdata),
+    .data_sram_rdata  (data_sram_rdata  ),
     .data_sram_data_ok(data_sram_data_ok), //lab10
     //to ds
     .ms_to_ds_bus   (ms_to_ds_bus   ),
@@ -496,36 +520,37 @@ wb_stage wb_stage(
     .ws_csr_esubcode(wb_esubcode    ),
     .ws_vaddr       (wb_vaddr       ),
     .ws_tid_rvalue  (tid_rvalue     ),
+    .ws_csr_mem_inst(ws_mem_inst    ),
 
-    .asid(asid),
-    .tlbehi(tlbehi),
-    .tlbidx(tlbidx),
-    .tlbelo0(tlbelo0),
-    .tlbelo1(tlbelo1),
+    .asid           (asid           ),
+    .tlbehi         (tlbehi         ),
+    .tlbidx         (tlbidx         ),
+    .tlbelo0        (tlbelo0        ),
+    .tlbelo1        (tlbelo1        ),
 
-        // write port
-    .we         (we), //w(rite) e(nable)
-    .w_index    (w_index),
-    .w_e        (w_e),
-    .w_vppn     (w_vppn),
-    .w_ps       (w_ps),
-    .w_asid     (w_asid),
-    .w_g        (w_g),
-    .w_ppn0     (w_ppn0),
-    .w_plv0     (w_plv0),
-    .w_mat0     (w_mat0),
-    .w_d0       (w_d0),
-    .w_v0       (w_v0),
-    .w_ppn1     (w_ppn1),
-    .w_plv1     (w_plv1),
-    .w_mat1     (w_mat1),
-    .w_d1       (w_d1),
-    .w_v1       (w_v1),
-
-    .r_index(r_index),
-    .tlbfill(ws_tlbfill),
-    .tlbrd(ws_tlbrd),
-    .tlbwr(ws_tlbwr),
+    // write port
+    .we             (we             ), //w(rite) e(nable)
+    .w_index        (w_index        ),
+    .w_e            (w_e            ),
+    .w_vppn         (w_vppn         ),
+    .w_ps           (w_ps           ),
+    .w_asid         (w_asid         ),
+    .w_g            (w_g            ),
+    .w_ppn0         (w_ppn0         ),
+    .w_plv0         (w_plv0         ),
+    .w_mat0         (w_mat0         ),
+    .w_d0           (w_d0           ),
+    .w_v0           (w_v0           ),
+    .w_ppn1         (w_ppn1         ),
+    .w_plv1         (w_plv1         ),
+    .w_mat1         (w_mat1         ),
+    .w_d1           (w_d1           ),
+    .w_v1           (w_v1           ),
+    
+    .r_index        (r_index        ),
+    .tlbfill        (ws_tlbfill     ),
+    .tlbrd          (ws_tlbrd       ),
+    .tlbwr          (ws_tlbwr       ),
 
     //trace debug interface
     .debug_wb_pc      (debug_wb_pc      ),
@@ -554,41 +579,44 @@ csr u_csr(
     .wb_ecode     (wb_ecode   ),
     .wb_esubcode  (wb_esubcode),
     .wb_pc        (debug_wb_pc),
-    .tid_rvalue   (tid_rvalue),
+    .tid_rvalue   (tid_rvalue ),
 
-
-    .ws_tlbrd(ws_tlbrd),
-    .ws_tlbwr(ws_tlbwr),
-    .ws_tlbfill(ws_tlbwr),
-    .es_tlbsrch(es_tlbsrch),
-    .es_invtlb(invtlb_valid),
+    .ws_mem_inst  (ws_mem_inst ),
+    .ws_tlbrd     (ws_tlbrd    ),
+    .ws_tlbwr     (ws_tlbwr    ),
+    .ws_tlbfill   (ws_tlbwr    ),
+    .es_tlbsrch   (es_tlbsrch  ),
+    .es_invtlb    (invtlb_valid),
     // search
-    .s1_found(s1_found),
-    .s1_index(s1_index),
+    .s1_found     (s1_found    ),
+    .s1_index     (s1_index    ),
     
     // read port
-    .r_e        (r_e),
-    .r_vppn     (r_vppn),
-    .r_ps       (r_ps),
-    .r_asid     (r_asid),
-    .r_g        (r_g),
-    .r_ppn0     (r_ppn0),
-    .r_plv0     (r_plv0),
-    .r_mat0     (r_mat0),
-    .r_d0       (r_d0),
-    .r_v0       (r_v0),
-    .r_ppn1     (r_ppn1),
-    .r_plv1     (r_plv1),
-    .r_mat1     (r_mat1),
-    .r_d1       (r_d1),
-    .r_v1       (r_v1),
+    .r_e          (r_e         ),
+    .r_vppn       (r_vppn      ),
+    .r_ps         (r_ps        ),
+    .r_asid       (r_asid      ),
+    .r_g          (r_g         ),
+    .r_ppn0       (r_ppn0      ),
+    .r_plv0       (r_plv0      ),
+    .r_mat0       (r_mat0      ),
+    .r_d0         (r_d0        ),
+    .r_v0         (r_v0        ),
+    .r_ppn1       (r_ppn1      ),
+    .r_plv1       (r_plv1      ),
+    .r_mat1       (r_mat1      ),
+    .r_d1         (r_d1        ),
+    .r_v1         (r_v1        ),
 
     // search
-    .asid(asid),
-    .tlbehi(tlbehi),
-    .tlbidx(tlbidx),
-    .tlbelo0(tlbelo0),
-    .tlbelo1(tlbelo1)
+    .asid         (asid        ),
+    .tlbehi       (tlbehi      ),
+    .tlbidx       (tlbidx      ),
+    .tlbelo0      (tlbelo0     ),
+    .tlbelo1      (tlbelo1     ),
+    .csr_crmd     (csr_crmd    ),
+    .csr_dmw0     (csr_dmw0    ),
+    .csr_dmw1     (csr_dmw1    )
 );
 
 endmodule

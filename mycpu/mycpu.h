@@ -2,10 +2,10 @@
     `define MYCPU_H
 
     `define BR_BUS_WD 35
-    `define FS_TO_DS_BUS_WD 65
-    `define DS_TO_ES_BUS_WD 296
-    `define ES_TO_MS_BUS_WD 169
-    `define MS_TO_WS_BUS_WD 194
+    `define FS_TO_DS_BUS_WD 71
+    `define DS_TO_ES_BUS_WD 302
+    `define ES_TO_MS_BUS_WD 176
+    `define MS_TO_WS_BUS_WD 202
     `define ES_TO_DS_BUS_WD 55
     `define MS_TO_DS_BUS_WD 55
     `define MS_TO_ES_BUS_WD 16
@@ -35,6 +35,7 @@
     `define CSR_TICLR 14'h44 
     `define CSR_DMW0 14'h180 
     `define CSR_DMW1 14'h181
+    `define CSR_TLBRENTRY 14'h88
 
     `define ECODE_INT 14'h0 //中断
     `define ECODE_ADE 14'h8
@@ -43,9 +44,20 @@
     `define ECODE_BRK 14'hc //断点
     `define ECODE_INE 14'hd //指令不存在
     `define ECODE_INVTLB 14'hd
+
+    `define ECODE_PIL 14'h1 // load操作页无效例外
+    `define ECODE_PIS 14'h2 // store操作页无效例外
+    `define ECODE_PIF 14'h3 // 取指操作无效例外
+    `define ECODE_PME 14'h4 // 页修改例外
+    `define ECODE_PPI 14'h7 // 页特权不合规例外
+    `define ECODE_TLBR 14'h3f // TLB重填例外
     
+
+
     `define ESUBCODE_ADEF 14'h0 //取地址错例外
     `define ESUBCODE_ADEM 14'h1 //访存指令地址错例外
+
+    
 
 
 `endif

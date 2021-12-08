@@ -24,6 +24,7 @@ module wb_stage(
     output [5:0]                    ws_csr_ecode     ,
     output [8:0]                    ws_csr_esubcode  ,
     input  [31:0]                   ws_tid_rvalue    ,
+    output                          ws_csr_mem_inst  ,
 
     //lab14
     input [31:0]         asid,
@@ -87,9 +88,15 @@ wire        ws_tlbwr;
 wire        ws_tlbrd;
 wire        ws_refetch;
 wire        ws_invtlb;
+wire [5:0]  ws_tlb_ex;
 reg [3:0] tlbfill_random;
-
-assign {ws_invtlb_op_exce,  //193:193
+wire        ws_mem_inst;
+wire        ws_ade;
+assign {
+        ws_ade           ,  //201:201
+        ws_mem_inst      ,  //200:200
+        ws_tlb_ex        ,  //199:194
+        ws_invtlb_op_exce,  //193:193
         ws_invtlb        ,  //192:192
         ws_tlbfill       ,  //191:191
         ws_tlbrd         ,  //190:190
@@ -120,8 +127,9 @@ assign ws_to_fs_bus = {
                        ws_ex
                       };
 
+assign ws_csr_mem_inst = ws_mem_inst;
 assign ws_csr_eret_flush = ws_ertn && ws_valid;
-assign ws_ex = (ws_sys_exce || ws_pc_exce || ws_mem_exce || ws_brk_exce || ws_ine_exce || ws_invtlb_op_exce || ws_has_int) && ws_valid;
+assign ws_ex = (ws_sys_exce || ws_ade || ws_pc_exce || ws_mem_exce || ws_brk_exce || ws_ine_exce || ws_invtlb_op_exce || ws_has_int || (|ws_tlb_ex)) && ws_valid;
 assign ws_vaddr = ws_error_vaddr;
 assign ws_block = ws_ex | ws_csr_eret_flush;         //进入调用或者退出的清空信号
 assign ws_refetch = ws_tlbfill | ws_tlbrd | ws_tlbwr | ws_invtlb;
@@ -132,7 +140,14 @@ assign tlbrd = ws_tlbrd && ws_valid;
 
 
 
-assign ws_csr_ecode   = ws_pc_exce       ? `ECODE_ADE    :
+assign ws_csr_ecode   = 
+                        (ws_pc_exce | ws_ade)  ? `ECODE_ADE    :
+                        ws_tlb_ex[0]     ? `ECODE_TLBR   :
+                        ws_tlb_ex[1]     ? `ECODE_PPI    :
+                        ws_tlb_ex[2]     ? `ECODE_PME    :
+                        ws_tlb_ex[3]     ? `ECODE_PIF    :
+                        ws_tlb_ex[4]     ? `ECODE_PIS    :
+                        ws_tlb_ex[5]     ? `ECODE_PIL    :
                         ws_mem_exce      ? `ECODE_ALE    :
                         ws_sys_exce      ? `ECODE_SYS    :
                         ws_brk_exce      ? `ECODE_BRK    :
@@ -141,7 +156,8 @@ assign ws_csr_ecode   = ws_pc_exce       ? `ECODE_ADE    :
                                                 6'b0     ;
                                     
 assign ws_csr_esubcode = ws_pc_exce  ? `ESUBCODE_ADEF :
-                                     1'b0;
+                         ws_ade      ? `ESUBCODE_ADEM :
+                                                1'b0  ;
 
 wire        rf_we;
 wire [4 :0] rf_waddr;
@@ -177,7 +193,6 @@ assign rf_waddr = ws_dest;
 assign rf_wdata = ws_rdcntid ? ws_tid_rvalue : ws_final_result;
 
 
-
 //lab14
 always@(posedge clk)begin
     if(reset)
@@ -186,7 +201,7 @@ always@(posedge clk)begin
         tlbfill_random <= tlbfill_random + 1'b1;
 end
 
-assign we = ws_tlbwr | ws_tlbfill;
+assign we = (ws_tlbwr | ws_tlbfill) && ws_valid;
 assign w_index = ws_tlbwr? tlbidx[3:0] : tlbfill_random;
 assign w_e = ~tlbidx[31];
 assign w_vppn = tlbehi[31:13];
@@ -205,6 +220,7 @@ assign w_d1 = tlbelo1[1];
 assign w_v1 = tlbelo1[0];
 
 assign r_index = tlbidx[3:0];
+
 // debug info generate
 assign debug_wb_pc       = ws_pc;
 assign debug_wb_rf_wen   = {4{rf_we}};
